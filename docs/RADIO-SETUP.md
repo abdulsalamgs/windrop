@@ -6,6 +6,8 @@ Windrop's Windows process implements AirDrop's TLS, Discover/Ask/Upload exchange
 
 The development PC has a Realtek 8852CE PCIe adapter, Windows driver `6001.16.172.0`, and Ethernet. No compatible dedicated USB radio was connected. The built-in card is **not claimed as supported**, and PCIe Wi-Fi cannot be attached to WSL through USB/IP.
 
+Investigation of this exact card found a credible Linux raw-radio implementation, so the hardware should not be described as inherently incapable. The installed Windows driver rejected a reversible monitor-mode request with error 50 (`ERROR_NOT_SUPPORTED`). A Windows PCIe backend would require further driver development and hardware qualification. See [built-in Wi-Fi research](BUILTIN-WIFI-RESEARCH.md) for the measurements, source references, and remaining work.
+
 The first hardware candidate is **ALFA AWUS036ACM**, MediaTek MT7612U, USB ID `0e8d:7612`. ALFA documents [Linux support with the in-kernel driver](https://docs.alfa.com.tw/Support/Linux/MT7612U/); this identifies a plausible driver-backed candidate, **not a successful Windrop/AirDrop qualification**. Confirm the exact USB ID, active monitor mode, injection, and permitted channels before relying on it. An adapter with a similar product name or a different revision may use another chipset.
 
 [SwooshDrop's hardware beta](https://github.com/AlbinoPriest/swooshdrop) reports successful receiving with TP-Link TL-WN725N, USB ID `0bda:8179`, through a dedicated WSL runtime and an additional driver. That result belongs to SwooshDrop; its installer/driver bundle is not part of Windrop. It does not validate this bridge or our send path.
