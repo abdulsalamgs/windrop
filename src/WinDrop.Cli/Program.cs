@@ -127,6 +127,12 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
 
     await using IAsyncDisposable advertisement = await transport.AdvertiseAsync(record, ct);
 
+    using X509Certificate2 certificate = AirDropCertificate.CreateSelfSigned(Environment.MachineName);
+    await using var incoming = transport.AcceptAsync(record.Port, ct).GetAsyncEnumerator(ct);
+    // MoveNext starts the listener before yielding for a connection. Announce readiness
+    // only after this point; certificate generation can take seconds on a busy machine.
+    Task<bool> nextConnection = incoming.MoveNextAsync().AsTask();
+
     Console.WriteLine($"Receiving as '{instance}' on port {record.Port}");
 
     if (transport is InfraWifiTransport infra)
@@ -134,10 +140,9 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
     Console.WriteLine($"Saving to {directory}");
     Console.WriteLine("Ctrl+C to stop.\n");
 
-    using X509Certificate2 certificate = AirDropCertificate.CreateSelfSigned(Environment.MachineName);
-
-    await foreach (Stream raw in transport.AcceptAsync(record.Port, ct))
+    while (await nextConnection)
     {
+        Stream raw = incoming.Current;
         // One connection at a time is deliberate: a consent prompt on the console cannot
         // sensibly be answered for two senders at once.
         bool handshakeDone = false;
@@ -167,6 +172,7 @@ static async Task<int> ReceiveAsync(string[] args, CancellationToken ct)
         {
             await raw.DisposeAsync();
         }
+        nextConnection = incoming.MoveNextAsync().AsTask();
     }
 
     return 0;

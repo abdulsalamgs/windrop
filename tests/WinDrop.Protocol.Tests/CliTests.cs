@@ -32,7 +32,7 @@ public class CliTests
             // Drain logs so the receiver cannot block on its output pipe.
             var output = receiver.StandardOutput.ReadToEndAsync();
             var sent = await RunAsync(["send", "--lan", "--peer", "127.0.0.1", "--port", port.ToString(), source], null);
-            Assert.Equal(0, sent.ExitCode);
+            Assert.True(sent.ExitCode == 0, sent.Output);
             Assert.Contains("Done.", sent.Output);
             Assert.Equal(expected, await File.ReadAllBytesAsync(Path.Combine(downloads, "fixture.txt"), timeout.Token));
         }
