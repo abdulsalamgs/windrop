@@ -27,10 +27,12 @@ public sealed class RadioServer : IAsyncDisposable
     private sealed class Controller(TcpClient client, int reversePort, string session)
     {
         public TcpClient Client { get; } = client;
+        public NetworkStream Stream { get; } = client.GetStream();
         public int ReversePort { get; } = reversePort;
         public string Session { get; } = session;
         public SemaphoreSlim WriteGate { get; } = new(1, 1);
         public CancellationTokenSource Lifetime { get; } = new();
+        public bool Ready { get; set; }
     }
 
     public RadioServer(string interfaceName, IPAddress radioAddress, IPAddress listenAddress,
@@ -52,6 +54,7 @@ public sealed class RadioServer : IAsyncDisposable
     public int ControlPort => ((IPEndPoint)_control.LocalEndpoint).Port;
     public int DataPort => ((IPEndPoint)_data.LocalEndpoint).Port;
     public int AirDropPort => ((IPEndPoint)_airdrop.LocalEndpoint).Port;
+    public int MdnsPort => ((IPEndPoint)_mdns!.Client.LocalEndPoint!).Port;
 
     public Task StartAsync(CancellationToken ct = default)
     {
@@ -59,15 +62,16 @@ public sealed class RadioServer : IAsyncDisposable
         try
         {
             _control.Start(); _data.Start(); _airdrop.Start();
+            _mdns = new UdpClient(AddressFamily.InterNetworkV6);
+            _mdns.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            _mdns.Client.Bind(new IPEndPoint(_loopbackTest ? IPAddress.IPv6Loopback : IPAddress.IPv6Any, _loopbackTest ? 0 : 5353));
             if (!_loopbackTest)
             {
-                _mdns = new UdpClient(AddressFamily.InterNetworkV6);
-                _mdns.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-                _mdns.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, 5353));
                 _mdns.JoinMulticastGroup((int)_address.ScopeId, IPAddress.Parse("ff02::fb"));
                 _mdns.Client.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.MulticastInterface, (int)_address.ScopeId);
-                _loops.Add(MdnsLoopAsync(_shutdown.Token));
+                _mdns.Client.SetSocketOption(SocketOptionLevel.IPv6, SocketOptionName.MulticastTimeToLive, 255);
             }
+            _loops.Add(MdnsLoopAsync(_shutdown.Token));
             _loops.Add(AcceptLoopAsync(_control, HandleControlAsync));
             _loops.Add(AcceptLoopAsync(_data, HandleDataAsync));
             _loops.Add(AcceptLoopAsync(_airdrop, HandleInboundAsync));
@@ -137,6 +141,7 @@ public sealed class RadioServer : IAsyncDisposable
                 ["ok"] = true, ["interface"] = _interface, ["address"] = _address.ToString(),
                 ["dataPort"] = DataPort, ["airdropPort"] = AirDropPort, ["session"] = controller.Session
             }, handshake.Token);
+            lock (_gate) controller.Ready = true;
             while (!_shutdown.IsCancellationRequested)
             {
                 var message = await ReadMessageAsync(stream, _shutdown.Token);
@@ -144,9 +149,9 @@ public sealed class RadioServer : IAsyncDisposable
                 if (message["op"]?.GetValue<string>() != "mdns") continue;
                 byte[] payload = Convert.FromBase64String(message["data"]!.GetValue<string>());
                 if (payload.Length > 9000) return;
-                // In test mode, echo real DNS bytes through the control connection.
-                if (_loopbackTest) await SendControlAsync(controller, payload);
-                else await _mdns!.SendAsync(payload, new IPEndPoint(IPAddress.Parse("ff02::fb%" + _address.ScopeId), 5353), _shutdown.Token);
+                var destination = _loopbackTest ? new IPEndPoint(IPAddress.IPv6Loopback, MdnsPort)
+                    : new IPEndPoint(IPAddress.Parse("ff02::fb%" + _address.ScopeId), 5353);
+                await _mdns!.SendAsync(payload, destination, _shutdown.Token);
             }
         }
         finally
@@ -159,14 +164,14 @@ public sealed class RadioServer : IAsyncDisposable
     private bool HasKey(string? candidate) => candidate is not null &&
         CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(candidate), _key);
 
-    private Controller? CurrentController() { lock (_gate) return _controller; }
+    private Controller? CurrentController() { lock (_gate) return _controller is { Ready: true } ? _controller : null; }
 
     private async Task SendControlAsync(Controller owner, byte[] payload)
     {
         await owner.WriteGate.WaitAsync(_shutdown.Token);
         try
         {
-            await WriteMessageAsync(owner.Client.GetStream(), new JsonObject
+            await WriteMessageAsync(owner.Stream, new JsonObject
             { ["event"] = "mdns", ["data"] = Convert.ToBase64String(payload) }, _shutdown.Token);
         }
         finally { owner.WriteGate.Release(); }
@@ -182,7 +187,15 @@ public sealed class RadioServer : IAsyncDisposable
                 if (packet.RemoteEndPoint.Address.ScopeId != _address.ScopeId) continue;
                 var owner = CurrentController();
                 if (owner is not null && packet.Buffer.Length <= 9000)
-                    await SendControlAsync(owner, packet.Buffer);
+                {
+                    try { await SendControlAsync(owner, packet.Buffer); }
+                    catch (Exception e) when (e is IOException or SocketException or ObjectDisposedException)
+                    {
+                        // This controller failed; its TCP reader clears ownership. Keep
+                        // receiving radio packets so the next controller can discover peers.
+                        owner.Client.Dispose();
+                    }
+                }
             }
         }
         catch (Exception e) when (e is OperationCanceledException or IOException or SocketException or ObjectDisposedException) { }

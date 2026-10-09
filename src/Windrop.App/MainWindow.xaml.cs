@@ -16,8 +16,9 @@ namespace Windrop.App;
 
 public partial class MainWindow : Window
 {
-    private sealed record PeerItem(AirDropPeer Peer)
+    private sealed class PeerItem(AirDropPeer peer)
     {
+        public AirDropPeer Peer { get; set; } = peer;
         public string DisplayName => PeerText.Printable(Peer.InstanceName);
         public DateTime Seen { get; set; } = DateTime.UtcNow;
     }
@@ -91,7 +92,7 @@ public partial class MainWindow : Window
             await foreach (var peer in _transport!.BrowseAsync(ct))
             {
                 var existing = _peers.FirstOrDefault(p => p.Peer.InstanceName == peer.InstanceName);
-                if (existing is not null) existing.Seen = DateTime.UtcNow;
+                if (existing is not null) { existing.Peer = peer; existing.Seen = DateTime.UtcNow; }
                 else _peers.Add(new PeerItem(peer));
                 EmptyPeers.Visibility = _peers.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             }
