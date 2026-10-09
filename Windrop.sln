@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{22B2A0D0-763A-4461-A2EB-37CF16E74845}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinDrop.Protocol", "src\WinDrop.Protocol\WinDrop.Protocol.csproj", "{17F6FA11-0521-42BC-B291-B8EACF3F415D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinDrop.Cli", "src\WinDrop.Cli\WinDrop.Cli.csproj", "{15D849E6-0252-47C4-B928-B9A825C24C34}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Windrop.Radio", "src\Windrop.Radio\Windrop.Radio.csproj", "{FCC11741-79FF-4DE3-8E87-9E9CC87CAB66}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Windrop.App", "src\Windrop.App\Windrop.App.csproj", "{FFA4F1CC-63B8-41E3-A064-A8156A62497B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{88ACE5ED-CC12-4392-A357-55874286BB45}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WinDrop.Protocol.Tests", "tests\WinDrop.Protocol.Tests\WinDrop.Protocol.Tests.csproj", "{B6648092-12FC-4689-B7A4-EA40134863D3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{17F6FA11-0521-42BC-B291-B8EACF3F415D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{17F6FA11-0521-42BC-B291-B8EACF3F415D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{17F6FA11-0521-42BC-B291-B8EACF3F415D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{17F6FA11-0521-42BC-B291-B8EACF3F415D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{15D849E6-0252-47C4-B928-B9A825C24C34}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15D849E6-0252-47C4-B928-B9A825C24C34}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15D849E6-0252-47C4-B928-B9A825C24C34}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15D849E6-0252-47C4-B928-B9A825C24C34}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FCC11741-79FF-4DE3-8E87-9E9CC87CAB66}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FCC11741-79FF-4DE3-8E87-9E9CC87CAB66}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FCC11741-79FF-4DE3-8E87-9E9CC87CAB66}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FCC11741-79FF-4DE3-8E87-9E9CC87CAB66}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FFA4F1CC-63B8-41E3-A064-A8156A62497B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FFA4F1CC-63B8-41E3-A064-A8156A62497B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FFA4F1CC-63B8-41E3-A064-A8156A62497B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FFA4F1CC-63B8-41E3-A064-A8156A62497B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B6648092-12FC-4689-B7A4-EA40134863D3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B6648092-12FC-4689-B7A4-EA40134863D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B6648092-12FC-4689-B7A4-EA40134863D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B6648092-12FC-4689-B7A4-EA40134863D3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{17F6FA11-0521-42BC-B291-B8EACF3F415D} = {22B2A0D0-763A-4461-A2EB-37CF16E74845}
+		{15D849E6-0252-47C4-B928-B9A825C24C34} = {22B2A0D0-763A-4461-A2EB-37CF16E74845}
+		{FCC11741-79FF-4DE3-8E87-9E9CC87CAB66} = {22B2A0D0-763A-4461-A2EB-37CF16E74845}
+		{FFA4F1CC-63B8-41E3-A064-A8156A62497B} = {22B2A0D0-763A-4461-A2EB-37CF16E74845}
+		{B6648092-12FC-4689-B7A4-EA40134863D3} = {88ACE5ED-CC12-4392-A357-55874286BB45}
+	EndGlobalSection
+EndGlobal

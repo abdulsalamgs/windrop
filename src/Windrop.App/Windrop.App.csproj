@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF>
+    <AssemblyName>Windrop</AssemblyName><RootNamespace>Windrop.App</RootNamespace>
+    <InvariantGlobalization>false</InvariantGlobalization><Product>Windrop</Product><Version>0.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../WinDrop.Protocol/WinDrop.Protocol.csproj" /></ItemGroup>
+</Project>
