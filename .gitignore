@@ -1,0 +1,9 @@
+.reference/
+.tools/
+**/bin/
+**/obj/
+publish/
+captures/
+*.user
+*.key
+.env
