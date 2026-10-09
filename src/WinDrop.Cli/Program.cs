@@ -479,4 +479,3 @@ static string? ArgumentValue(string[] args, string name)
     int index = Array.FindIndex(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
     return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
 }
-

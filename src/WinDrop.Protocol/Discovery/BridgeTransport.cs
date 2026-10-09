@@ -425,4 +425,3 @@ public sealed class BridgeTransport : IAirDropTransport
         _writeGate.Dispose();
     }
 }
-
