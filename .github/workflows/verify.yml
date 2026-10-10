@@ -28,6 +28,9 @@ jobs:
         run: |
           ./scripts/test-tunnel.ps1
           ./scripts/test-tunnel.ps1 -Shutdown Eof
+      - name: Verify test-driver signing without trusting or installing it
+        shell: pwsh
+        run: ./scripts/test-driver-signing.ps1
       - uses: actions/upload-artifact@v4
         with:
           name: Windrop-native-development-x64

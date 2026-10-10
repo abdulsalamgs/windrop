@@ -31,4 +31,8 @@ Neither script installs a driver, trusts a signing certificate, changes boot pol
 
 ## Qualification gate
 
+For local development, a self-signed test package can be prepared without an EV
+purchase. Loading it requires a separate boot-security and installation decision;
+preparation alone leaves the PC unchanged. See [local testing](LOCAL-DRIVER-TESTING.md).
+
 The source implementation is present; the remaining gate is loaded hardware validation, not another identity-only scaffold. Validate OS function-reset support, firmware startup, physical RX/TX, release-report parsing, regulatory/channel behavior, retune latency and AWDL timing first. Then validate actual iPhone discovery, consent and byte-exact transfers in both directions. Finally test repeated sessions, process crashes, sleep/resume, removal, reset failure and restoration of the original driver under Driver Verifier, with another network connection and a rollback path. No installation is authorized merely by building this package.

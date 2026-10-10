@@ -122,6 +122,27 @@ claimed.
 
 ## Limits
 
+## Local test-signing preparation
+
+`scripts/test-driver-signing.ps1` passes four public CLI checks: the unsigned
+build is preserved and the certificate remains untrusted; an existing output is
+preserved; changed package bytes are rejected; and a modified SYS is rejected
+even when its manifest hash is updated. The initial missing preparation command
+failed before implementation. Windows reports the self-signed root as an
+`UnknownError` in PowerShell; verification now uses WinVerifyTrust's numeric
+result and permits only success or the exact untrusted-root result for the
+matching signer. No broad unknown-error bypass is used.
+
+A separate local test-signed SYS/catalog and public certificate were prepared.
+The private key remains non-exportable in CurrentUser/My, outside Git. The
+installed Realtek `6001.16.172.0` driver was exported with its INF and file hashes
+for recovery. Secure Boot remains enabled, BitLocker reports protection off,
+Windows RE reports enabled, and test-signing was not enabled. No certificate
+trust, physical-driver binding or reboot was performed. These preparation checks
+do not qualify loading or recovery after a real radio-driver test.
+
+## Limits
+
 - No dedicated USB adapter or Apple device was available. This build has not completed a real iPhone send or receive. Discovery over `awdl0`, USB passthrough, radio throughput, and iOS version compatibility remain unverified.
 - The optional WSL kernel helper was syntax checked but not compiled or installed. Its generated kernel affects all WSL distributions only if the user explicitly configures it.
 - The disconnected GUI state was visually inspected. Live peer selection, Windows firewall prompting, and a real-device approval dialog still need hardware acceptance testing.

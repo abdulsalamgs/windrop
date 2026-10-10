@@ -16,3 +16,9 @@ Requirements:
 Agreed test boundaries: public CLI and radio bridge, including readiness, discovery start/stop, consent, and byte-for-byte delivery. Real iPhone interoperability and throughput require hardware testing; passing a loopback test does not establish either.
 
 The user subsequently required using the built-in RTL8852CE while Windows stays running, and implementing raw frame reception/transmission and AWDL integration. The native increment provides bounded kernel-owned DMA rings, the Devourer chip HAL through Windows IOCTLs, an OWL core worker with Windows scheduling and acknowledged retunes, Wintun IPv6 and the authenticated local radio bridge. Public replay tests must preserve exact decoded bytes and reject malformed frames. This is an experimental port; it must distinguish build/offline verification from real hardware qualification and never claim a driver query establishes AirDrop readiness. Building source does not authorize replacing the installed driver or changing Secure Boot/test-signing policy. See [WINDOWS-DRIVER.md](WINDOWS-DRIVER.md).
+
+The continued local-testing work prepares a separate test-signed development
+package and exports the original Realtek driver for recovery. Preserve existing
+packages and the unsigned source build, reject altered signatures, and keep
+private keys and machine-specific recovery state outside Git. Preparation must
+not install or trust certificates/drivers, alter boot security, or reboot.
