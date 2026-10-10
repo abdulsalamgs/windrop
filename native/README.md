@@ -19,7 +19,7 @@ Run from the repository root:
 ```
 
 The native build pins and verifies its dependencies, restores Microsoft's SDK
-and WDK through NuGet, builds both workers and the unsigned driver, and runs the
+and WDK through NuGet, builds all three workers and the unsigned driver, and runs the
 public replay checks. Output: `publish/Windrop-native-development-x64.zip`.
 Its `sources/windrop` directory contains the complete build sources and scripts;
 the other source archives contain the pinned upstream code. Apply the included
@@ -51,12 +51,17 @@ bare MPDUs in radiotap with FCS and RSSI metadata. `doctor` queries the driver;
 `windrop-awdl.exe` links OWL's protocol core: action/data RX/TX, synchronization,
 election, peer expiry and channel sequences. A Windows loop replaces Linux
 libev/pcap/netlink. Retunes require acknowledgements before sending, and queued
-transmits expire. Wintun exposes an IPv6-only `awdl0` with the radio's EUI-64
+transmits expire. The independent `windrop-tunnel.exe` worker exposes an IPv6-only
+`awdl0` through Wintun, with the radio's EUI-64
 link-local address and MTU 1450. The existing authenticated .NET radio bridge
 then carries discovery and AirDrop traffic for the desktop and CLI.
 
 The GPL2 hardware worker and GPL3 AWDL worker are separate executables with a
 generic raw-frame pipe protocol. No Devourer code is linked into the AWDL worker.
+The original MIT tunnel worker alone loads Wintun. Its public CLI takes an
+adapter name, IPv6 link-local address and MTU, and exchanges ordinary IPv6 packets
+over stdio. It has no OWL/AWDL types or callbacks. No Wintun DLL is loaded by the
+GPL3 worker.
 See [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 
 ## Commands
@@ -64,6 +69,7 @@ See [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 ```powershell
 ./build/native/Release/windrop-hardware.exe doctor
 ./build/native/Release/windrop-awdl.exe --help
+./build/native/Release/windrop-tunnel.exe --help
 ./build/native/Release/windrop-awdl.exe replay capture.pcap packets.bin --peer aabbccddeeff
 ./scripts/start-native.ps1
 ```
@@ -90,6 +96,20 @@ Channel(3, uint32), Transmit(4, uint64 GetTickCount64 expiry followed by radiota
 MPDU), Stop(5, empty), Fault(6, diagnostic text), ChannelAck(7, uint32).
 Incoming and outgoing queues are bounded; RX overflow drops packets. Control
 overflow, failed retunes and broken pipes terminate the session.
+
+The independent tunnel uses the same length-prefixed envelope with Hello(1,
+empty after adapter configuration), Frame(2, one complete IPv6 packet), and
+Stop(5, empty). EOF stops it. Its packets must match the IPv6 length field and
+configured MTU; it refuses an existing named adapter. Both directions remain
+bounded. The AWDL process configures `awdl0` through this generic CLI:
+
+```text
+windrop-tunnel serve --name awdl0 --address fe80::EUI64 --mtu 1450
+```
+
+Replace `fe80::EUI64` with a valid address derived from the actual radio MAC.
+The helper is independently usable with another name/address and a stdio client;
+it never interprets AWDL frames, peer state or radio controls.
 
 ## Qualification still required
 

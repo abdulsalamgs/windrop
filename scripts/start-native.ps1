@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Run this script in an administrator PowerShell after installing a properly signed Windrop driver.' }
-foreach ($path in @($AppPath, (Join-Path $NativeDirectory 'windrop-hardware.exe'), (Join-Path $NativeDirectory 'windrop-awdl.exe'), (Join-Path $NativeDirectory 'radio/windrop-radio.exe'))) {
+foreach ($path in @($AppPath, (Join-Path $NativeDirectory 'windrop-hardware.exe'), (Join-Path $NativeDirectory 'windrop-awdl.exe'), (Join-Path $NativeDirectory 'windrop-tunnel.exe'), (Join-Path $NativeDirectory 'radio/windrop-radio.exe'))) {
     if (-not (Test-Path -LiteralPath $path)) { throw "Missing package file: $path. See native/README.md." }
 }
 & (Join-Path $NativeDirectory 'windrop-hardware.exe') doctor

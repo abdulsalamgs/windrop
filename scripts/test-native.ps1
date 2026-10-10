@@ -71,3 +71,15 @@ if ($LASTEXITCODE -ne 0 -or $result -notmatch 'channels=0,0,149,0,0,0,0,0,6,0,14
     throw 'An iPhone infrastructure-channel window did not preserve usable AWDL social windows'
 }
 Write-Host 'PASS: captured iPhone channel sequence preserves social windows and skips unsupported infrastructure channels.'
+
+# Invalid generic tunnel configuration must fail before loading Wintun or
+# creating an adapter. This exercises the public CLI without changing the host.
+$tunnel = Join-Path $NativeDirectory 'windrop-tunnel.exe'
+if (-not (Test-Path -LiteralPath $tunnel)) { throw 'The standalone IPv6 tunnel worker is missing' }
+$errorFile = Join-Path $fixtures 'invalid-tunnel.txt'
+$ErrorActionPreference = 'Continue'
+& $tunnel serve --name test-tunnel --address invalid --mtu 1450 2>$errorFile | Out-Null
+$exit = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($exit -ne 3 -or (Get-Content $errorFile -Raw) -notmatch 'Invalid IPv6 address') { throw 'Invalid tunnel configuration was not rejected before adapter creation' }
+Write-Host 'PASS: standalone tunnel CLI rejects invalid IPv6 configuration before loading its adapter.'

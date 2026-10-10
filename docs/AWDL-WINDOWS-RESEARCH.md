@@ -80,7 +80,7 @@ OWL's protocol and daemon headers explicitly grant GPL version 3 or later. Devou
 
 Separate executable names and separate license/source notices are necessary but not sufficient by themselves. Use ordinary packet bytes and generic radio controls over IPC, support independent clients, and avoid exchanging internal peer/ring structures or protocol callbacks across the boundary. FSF distinguishes ordinary process communication from communication that effectively combines programs through intimate internal semantics. Keep corresponding source/build instructions available for each modified GPL component. [FSF aggregation guidance](https://www.gnu.org/licenses/gpl-faq.en.html#MereAggregation).
 
-Use Wintun's MIT alternative for `api/wintun.h` and the official signed DLL under its bundled redistribution license. Wintun's source and `example/example.c` are GPL2; independently implement the loader/adapter code rather than copying that example into the GPL3 OWL process. Preserve the DLL's supplied license notices. [Dual-licensed API header](https://git.zx2c4.com/wintun/tree/api/wintun.h), [example's grant](https://git.zx2c4.com/wintun/plain/example/example.c), [distribution license distinction](https://www.wintun.net/).
+Use Wintun's MIT alternative for `api/wintun.h` in an independent original MIT helper. The official signed DLL has a separate prebuilt-binary redistribution license; the header's MIT option does not make that DLL compatible with GPL3. Do not dynamically load it from the OWL executable. Wintun's source and `example/example.c` are GPL2; independently implement the loader/adapter code rather than copying that example into the GPL3 OWL process. Preserve the DLL's supplied license notices. [Dual-licensed API header](https://git.zx2c4.com/wintun/tree/api/wintun.h), [example's grant](https://git.zx2c4.com/wintun/plain/example/example.c), [distribution license distinction](https://www.wintun.net/).
 
 ## Qualification required before reporting support
 
@@ -89,3 +89,15 @@ No committed AWDL radio PCAP was found in the inspected OWL tree, author's `aird
 For offline frame qualification, hand-construct fixed byte fixtures and decode them with the independent Wireshark AWDL dissector rather than only feeding OWL's serializer output back into its own parser. Label them synthetic. Wireshark registers Apple AWDL's vendor action OUI and LLC PID `0x0800`, and separately decodes action TLVs and data headers. Include both action frames and IPv6 data, malformed/truncated TLVs, missing radiotap metadata, FCS variants and QoS A-MSDU. Pin the external decoder revision for repeatability. [Independent dissector at `ad85ea3cb5af4e9665f1b3e3cda5bee94b71ab73`](https://github.com/wireshark/wireshark/blob/ad85ea3cb5af4e9665f1b3e3cda5bee94b71ab73/epan/dissectors/packet-awdl.c#L1438).
 
 Existing protocol tests and replay fixtures can verify parsing, scheduling, byte framing and failure handling without hardware. They cannot prove actual channel switching, RX, TX or iPhone interoperability. Require independent on-air evidence for action and data TX, correct FCS, receiver-visible channel transitions, measured scheduling latency, then native iPhone discovery/consent and byte-for-byte delivery in both directions. Exercise stop, worker failure, device removal and restoration of ordinary Wi-Fi ownership. The native driver, OWL adapter and Wintun interface are separate readiness checks; none should imply the others succeeded.
+
+## Implemented Wintun boundary
+
+The Windows port now uses an independently usable MIT `windrop-tunnel` program.
+It accepts a generic adapter name, IPv6 link-local address and MTU; stdio carries
+ordinary bounded IPv6 packets and lifecycle records. Only this program includes
+the Wintun header and loads its DLL. OWL's GPL3 worker supplies its EUI-64 address
+through CLI arguments and does not exchange internal structures or callbacks.
+This addresses the direct-linking concern; it is not a blanket legal assurance
+for other combinations or redistribution changes. The prebuilt license imposes
+restrictions separate from the header, while GPL3 constrains further restrictions
+and corresponding source for linked components. [Wintun prebuilt license](https://git.zx2c4.com/wintun/plain/prebuilt-binaries-license.txt), [GPL3](https://www.gnu.org/licenses/gpl-3.0.html), [ordinary IPC and aggregation guidance](https://www.gnu.org/licenses/gpl-faq.en.html#MereAggregation).

@@ -31,7 +31,12 @@ add_subdirectory("${OWL_SOURCE}/src" owl)
 target_include_directories(awdl PUBLIC "${OWL_SOURCE}/src" awdl/compat)
 target_compile_options(awdl PRIVATE /FI"${CMAKE_CURRENT_SOURCE_DIR}/awdl/compat/owl-platform.h")
 add_executable(windrop-awdl awdl/main.cpp awdl/compat.c)
-target_include_directories(windrop-awdl PRIVATE "${WINTUN_SOURCE}/include")
-target_link_libraries(windrop-awdl PRIVATE awdl iphlpapi ws2_32 winmm)
+target_link_libraries(windrop-awdl PRIVATE awdl ws2_32 winmm)
 target_compile_options(windrop-awdl PRIVATE /W4 /WX)
 
+
+# The independently usable MIT IPv6 worker owns the prebuilt Wintun DLL.
+add_executable(windrop-tunnel tunnel/main.cpp)
+target_include_directories(windrop-tunnel PRIVATE "${WINTUN_SOURCE}/include")
+target_link_libraries(windrop-tunnel PRIVATE iphlpapi ws2_32)
+target_compile_options(windrop-tunnel PRIVATE /W4 /WX)

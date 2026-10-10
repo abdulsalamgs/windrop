@@ -6,7 +6,8 @@
 #include <string>
 #include "compat/owl-platform.h"
 #include "Engine.h"
-#include "RadioProcess.h"
+#include "../WorkerProcess.h"
+#include "Tunnel.h"
 #include <mmsystem.h>
 
 static volatile LONG stopping=0;
@@ -15,7 +16,7 @@ static BOOL WINAPI stop_console(DWORD event) {
     return FALSE;
 }
 static int run() {
-    RadioProcess radio;
+    WorkerProcess radio(L"windrop-hardware.exe",L"serve");
     windrop::Record response;
     uint64_t deadline=GetTickCount64()+120000;
     std::array<uint8_t,6> mac{};

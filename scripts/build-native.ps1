@@ -19,6 +19,7 @@ function Download([string]$url, [string]$name, [string]$hash) {
     return $path
 }
 $cmakeZip = Download 'https://github.com/Kitware/CMake/releases/download/v3.31.8/cmake-3.31.8-windows-x86_64.zip' 'cmake.zip' '81AA9964DBABD71FE02E7EC50472FD3AD56138C49944515ECE9001EFBFF8D719'
+$sevenZip = Download 'https://github.com/ip7z/7zip/releases/download/26.04/7zr.exe' '7zr.exe' '256FECA8E274E5DA655E2A284FABAFD9F554365EB164862089DACD4E8276D282'
 $usbArchive = Download 'https://github.com/libusb/libusb/releases/download/v1.0.29/libusb-1.0.29.7z' 'libusb.7z' '964A38152CA9A104CD00EC8D2F0617B89CD814F9B635E29763C68563D951521D'
 $wintunZip = Download 'https://www.wintun.net/builds/wintun-0.14.1.zip' 'wintun.zip' '07C256185D6EE3652E09FA55C0B673E2624B565E02C4B9091C79CA7D2F24EF51'
 $cmake = Join-Path $dependencies 'cmake-3.31.8-windows-x86_64/bin/cmake.exe'
@@ -26,11 +27,9 @@ if (-not (Test-Path -LiteralPath $cmake)) { Expand-Archive -LiteralPath $cmakeZi
 $usb = Join-Path $dependencies 'libusb'
 if (-not (Test-Path -LiteralPath (Join-Path $usb 'VS2022/MS64/dll/libusb-1.0.dll'))) {
     New-Item -ItemType Directory -Force $usb | Out-Null
-    # Windows Server's inbox tar lacks LZMA support. The already pinned CMake
-    # embeds libarchive with 7z support, so use it consistently on every host.
-    Push-Location $usb
-    try { Invoke-Checked $cmake @('-E', 'tar', 'xf', $usbArchive) }
-    finally { Pop-Location }
+    # Both Windows tar and CMake's libarchive lack this archive's BCJ2 codec.
+    # Use the versioned, hash-verified official standalone 7-Zip tool instead.
+    Invoke-Checked $sevenZip @('x', $usbArchive, "-o$usb", '-y', '-bso0')
 }
 $wintun = Join-Path $dependencies 'wintun'
 if (-not (Test-Path -LiteralPath $wintun)) { Expand-Archive -LiteralPath $wintunZip -DestinationPath $dependencies }
@@ -86,7 +85,7 @@ $props = @"
 [IO.File]::WriteAllText((Join-Path $repo 'build/Directory.Build.props'), $props)
 $output = Join-Path $repo 'build/native'
 Invoke-Checked $cmake @('-S', (Join-Path $repo 'native'), '-B', $output, '-G', 'Visual Studio 17 2022', '-A', 'x64', "-DDEVOURER_SOURCE=$devourer", "-DOWL_SOURCE=$owl", "-DLIBUSB_SOURCE=$usb", "-DWINTUN_SOURCE=$wintun")
-Invoke-Checked $cmake @('--build', $output, '--config', 'Release', '--target', 'windrop-awdl', 'windrop-hardware', '--parallel', '6')
+Invoke-Checked $cmake @('--build', $output, '--config', 'Release', '--target', 'windrop-awdl', 'windrop-hardware', 'windrop-tunnel', '--parallel', '6')
 $release = Join-Path $output 'Release'
 Copy-Item -LiteralPath $dll -Destination $release
 Copy-Item -LiteralPath (Join-Path $usb 'VS2022/MS64/dll/libusb-1.0.dll') -Destination $release

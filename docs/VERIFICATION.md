@@ -55,6 +55,7 @@ PASS: exact 48-byte IPv6 delivery from an independent AWDL wire fixture.
 PASS: non-Apple LLC frames dropped.
 PASS: invalid AWDL data prefixes dropped.
 PASS: captured iPhone idle sequence retains social windows, blanks channel 132.
+PASS: standalone tunnel CLI rejects invalid IPv6 configuration before adapter loading.
 
 windrop-awdl run (original Realtek driver still installed)
 Driver unavailable; Radio worker stopped; exit code 3.
@@ -67,7 +68,9 @@ each failed before the corresponding implementation/fix. The channel regression
 uses the independent iPhone idle sequence recorded in pinned OWL's tests inside a
 hand-built MIF: before review correction replay advertised channel 132; afterward
 it advertises `0,0,149,0,0,0,0,0,6,0,149,0,0,0,0,0`. No Windrop serializer generates
-the expected fixture. These are offline checks, not a captured full iPhone transfer.
+the expected fixture. The independent MIT tunnel worker was added after its public
+CLI check failed with a missing worker; that check now passes without creating an
+adapter. These are offline checks, not a captured full iPhone transfer.
 
 The standards review identified unsupported PCI-header writes, writable DMA
 ownership registers and hardware mutation during diagnostic cleanup. Fixes use
@@ -78,7 +81,11 @@ aligned splitting and social-window filtering address those findings. Further
 review corrected unsynchronized removal callbacks, an unsafe assumption about
 surprise removal and incomplete transmit initialization. Final Standards and
 Spec rechecks found no remaining substantive source findings. Reset/DMA failure
-paths, Wintun and scheduling still require loaded fault-injection tests.
+paths, Wintun and scheduling still require loaded fault-injection tests. Wintun
+is now owned by a generic MIT tunnel worker, rather than dynamically loaded into
+the GPL3 AWDL program. A versioned, hash-pinned 7-Zip extractor fixes fresh Windows
+CI extraction of the libusb BCJ2/LZMA archive; Windows tar and CMake libarchive
+both failed on that codec before the correction.
 
 The final serial .NET build passed with zero warnings/errors, and all 290 existing
 tests passed. The native pipeline was attempted without installing its driver and
