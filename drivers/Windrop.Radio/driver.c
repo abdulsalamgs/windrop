@@ -14,7 +14,14 @@ EVT_WDF_DEVICE_D0_EXIT WindropD0Exit;
 EVT_WDF_FILE_CLEANUP WindropFileCleanup;
 EVT_WDF_DEVICE_QUERY_REMOVE WindropQueryRemove;
 EVT_WDF_DEVICE_SURPRISE_REMOVAL WindropSurpriseRemoval;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_INIT WindropRestart;
+EVT_WDF_DEVICE_SELF_MANAGED_IO_RESTART WindropRestart;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL WindropIoControl;
+
+static VOID LockHardware(WDFDEVICE device)
+{ KeWaitForSingleObject(&DeviceContext(device)->HardwareLock, Executive, KernelMode, FALSE, NULL); }
+static VOID UnlockHardware(WDFDEVICE device)
+{ KeReleaseMutex(&DeviceContext(device)->HardwareLock, FALSE); }
 
 _Use_decl_annotations_
 NTSTATUS DriverEntry(PDRIVER_OBJECT DriverObject, PUNICODE_STRING RegistryPath)
@@ -46,15 +53,18 @@ NTSTATUS WindropDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     power.EvtDeviceD0Exit = WindropD0Exit;
     power.EvtDeviceQueryRemove = WindropQueryRemove;
     power.EvtDeviceSurpriseRemoval = WindropSurpriseRemoval;
+    power.EvtDeviceSelfManagedIoInit = WindropRestart;
+    power.EvtDeviceSelfManagedIoRestart = WindropRestart;
     WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &power);
     WDF_FILEOBJECT_CONFIG_INIT(&file, WDF_NO_EVENT_CALLBACK, WDF_NO_EVENT_CALLBACK, WindropFileCleanup);
     WdfDeviceInitSetFileObjectConfig(DeviceInit, &file, WDF_NO_OBJECT_ATTRIBUTES);
 
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes, DEVICE_CONTEXT);
     attributes.ExecutionLevel = WdfExecutionLevelPassive;
-    attributes.SynchronizationScope = WdfSynchronizationScopeDevice;
+    attributes.SynchronizationScope = WdfSynchronizationScopeNone;
     status = WdfDeviceCreate(&DeviceInit, &attributes, &device);
     if (!NT_SUCCESS(status)) return status;
+    KeInitializeMutex(&DeviceContext(device)->HardwareLock, 0);
 
     WdfDeviceSetAlignmentRequirement(device, 4095);
     WDF_DMA_ENABLER_CONFIG_INIT(&dma, WdfDmaProfileScatterGatherDuplex, RADIO_DMA_BYTES);
@@ -82,8 +92,7 @@ NTSTATUS WindropDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     return WdfIoQueueCreate(device, &queue, WDF_NO_OBJECT_ATTRIBUTES, WDF_NO_HANDLE);
 }
 
-_Use_decl_annotations_
-NTSTATUS WindropPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Translated)
+static NTSTATUS PrepareHardwareLocked(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Translated)
 {
     BUS_INTERFACE_STANDARD bus = {0};
     PCI_COMMON_CONFIG pci = {0};
@@ -150,7 +159,16 @@ NTSTATUS WindropPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST
 }
 
 _Use_decl_annotations_
-NTSTATUS WindropReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
+NTSTATUS WindropPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST Translated)
+{
+    NTSTATUS status;
+    LockHardware(Device);
+    status = PrepareHardwareLocked(Device, Raw, Translated);
+    UnlockHardware(Device);
+    return status;
+}
+
+static NTSTATUS ReleaseHardwareLocked(WDFDEVICE Device, WDFCMRESLIST Translated)
 {
     DEVICE_CONTEXT* context = DeviceContext(Device);
     UNREFERENCED_PARAMETER(Translated);
@@ -166,6 +184,16 @@ NTSTATUS WindropReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
     }
     RtlZeroMemory(&context->Info, sizeof(context->Info));
     return STATUS_SUCCESS;
+}
+
+_Use_decl_annotations_
+NTSTATUS WindropReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
+{
+    NTSTATUS status;
+    LockHardware(Device);
+    status = ReleaseHardwareLocked(Device, Translated);
+    UnlockHardware(Device);
+    return status;
 }
 
 static VOID ResetComplete(NTSTATUS Status, PVOID Context)
@@ -204,8 +232,8 @@ static NTSTATUS ResetFunction(DEVICE_CONTEXT* context)
 static NTSTATUS FenceDma(DEVICE_CONTEXT* context)
 {
     NTSTATUS status;
-    if (!context->Touched || context->Removed) return STATUS_SUCCESS;
-    status = RadioStop(context);
+    if (!context->Touched) return STATUS_SUCCESS;
+    status = context->Removed ? STATUS_DEVICE_HARDWARE_ERROR : RadioStop(context);
     if (!NT_SUCCESS(status)) status = ResetFunction(context);
     if (NT_SUCCESS(status)) context->Touched = FALSE;
     return status;
@@ -215,8 +243,10 @@ _Use_decl_annotations_
 NTSTATUS WindropD0Entry(WDFDEVICE Device, WDF_POWER_DEVICE_STATE Previous)
 {
     UNREFERENCED_PARAMETER(Previous);
+    LockHardware(Device);
     DeviceContext(Device)->InD0 = TRUE;
     DeviceContext(Device)->Removed = FALSE;
+    UnlockHardware(Device);
     return STATUS_SUCCESS;
 }
 
@@ -225,10 +255,12 @@ NTSTATUS WindropD0Exit(WDFDEVICE Device, WDF_POWER_DEVICE_STATE Target)
 {
     NTSTATUS status;
     UNREFERENCED_PARAMETER(Target);
+    LockHardware(Device);
     status = FenceDma(DeviceContext(Device));
     if (!NT_SUCCESS(status) && DeviceContext(Device)->DmaPublished)
         KeBugCheckEx(WINDROP_DMA_UNSAFE_BUGCHECK, 2, (ULONG_PTR)status, 0, 0);
     DeviceContext(Device)->InD0 = FALSE;
+    UnlockHardware(Device);
     return status;
 }
 
@@ -237,30 +269,50 @@ VOID WindropFileCleanup(WDFFILEOBJECT File)
 {
     WDFDEVICE device = WdfFileObjectGetDevice(File);
     DEVICE_CONTEXT* context = DeviceContext(device);
+    LockHardware(device);
     if (context->InD0 && !NT_SUCCESS(FenceDma(context))) {
         if (context->DmaPublished)
             KeBugCheckEx(WINDROP_DMA_UNSAFE_BUGCHECK, 3, 0, 0, 0);
         WdfDeviceSetFailed(device, WdfDeviceFailedNoRestart);
     }
+    UnlockHardware(device);
 }
 
 _Use_decl_annotations_
 NTSTATUS WindropQueryRemove(WDFDEVICE Device)
 {
-    return NT_SUCCESS(FenceDma(DeviceContext(Device))) ? STATUS_SUCCESS : STATUS_DEVICE_HUNG;
+    NTSTATUS status;
+    LockHardware(Device);
+    DeviceContext(Device)->RemovePending = TRUE;
+    status = FenceDma(DeviceContext(Device));
+    UnlockHardware(Device);
+    return NT_SUCCESS(status) ? STATUS_SUCCESS : STATUS_DEVICE_HUNG;
 }
 
 _Use_decl_annotations_
 VOID WindropSurpriseRemoval(WDFDEVICE Device)
 {
-    // The bus reports the function absent; avoid any further MMIO access.
+    LockHardware(Device);
+    // This may also mean reported device failure, not physical removal.
+    // Avoid MMIO, but preserve DMA ownership until the OS reset proves safety.
     DeviceContext(Device)->Removed = TRUE;
-    DeviceContext(Device)->Rings = FALSE;
-    DeviceContext(Device)->DmaPublished = FALSE;
+    if (!NT_SUCCESS(FenceDma(DeviceContext(Device))) && DeviceContext(Device)->DmaPublished)
+        KeBugCheckEx(WINDROP_DMA_UNSAFE_BUGCHECK, 4, 0, 0, 0);
+    UnlockHardware(Device);
 }
 
 _Use_decl_annotations_
-VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
+NTSTATUS WindropRestart(WDFDEVICE Device)
+{
+    // KMDF calls this after a canceled query-remove as well as normal restart.
+    // The previous session remains stopped; a new INITIALIZE is required.
+    LockHardware(Device);
+    DeviceContext(Device)->RemovePending = FALSE;
+    UnlockHardware(Device);
+    return STATUS_SUCCESS;
+}
+
+static VOID IoControlLocked(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
     size_t InputLength, ULONG Code)
 {
     WINDROP_RADIO_INFO* output;
@@ -269,7 +321,7 @@ VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
     PVOID input = NULL;
     PVOID bytes = NULL;
     ULONG length = 0;
-    if (context->Info.Size == 0 || context->Removed) {
+    if (context->Info.Size == 0 || context->Removed || context->RemovePending) {
         WdfRequestComplete(Request, STATUS_DEVICE_NOT_READY);
         return;
     }
@@ -343,4 +395,14 @@ VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
     length = sizeof(*output);
 complete:
     WdfRequestCompleteWithInformation(Request, status, NT_SUCCESS(status) ? length : 0);
+}
+
+_Use_decl_annotations_
+VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
+    size_t InputLength, ULONG Code)
+{
+    WDFDEVICE device = WdfIoQueueGetDevice(Queue);
+    LockHardware(device);
+    IoControlLocked(Queue, Request, OutputLength, InputLength, Code);
+    UnlockHardware(device);
 }

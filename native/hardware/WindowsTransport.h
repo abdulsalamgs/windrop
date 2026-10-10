@@ -57,7 +57,7 @@ public:
             WINDROP_RADIO_INFO info{}; DWORD n;
             call(WINDROP_IOCTL_GET_INFO,nullptr,0,&info,sizeof(info),&n);
             if(n!=sizeof(info) || info.Size!=sizeof(info) || info.Version!=2 || info.VendorId!=0x10ec || info.DeviceId!=0xc852 ||
-                (info.Capabilities&3)!=3) throw std::runtime_error("Incompatible Windrop radio driver");
+                (info.Capabilities&3)!=3) throw std::runtime_error("Incompatible Windrop radio driver or unavailable OS function-level reset support");
         } catch(...) { CloseHandle(device_); device_=INVALID_HANDLE_VALUE; throw; }
     }
     ~WindowsTransport() override { if(device_!=INVALID_HANDLE_VALUE) CloseHandle(device_); }

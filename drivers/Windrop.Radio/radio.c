@@ -109,7 +109,10 @@ static VOID ReapReports(DEVICE_CONTEXT* c)
             ULONG d=Le32(p+4), payload=d&0x3fff, type=(d>>24)&15;
             ULONG start=4+((d>>31)?32u:16u)+((d>>28)&7)*16+((d>>14)&3)*2;
             if((d&(1u<<23)) && type!=1) start+=4;
-            if(start<=bytes && payload<=bytes-start && type==7) {
+            // RPQ is exclusively the PCIe release-report ring. Its RX type is
+            // not the USB TX_PD_RELEASE_HOST discriminator. Match the pinned
+            // PCIe transport instead of silently starving pages on other types.
+            if(start<=bytes && payload<=bytes-start) {
                 ULONG pos;
                 for(pos=0;pos+4<=payload;pos+=4) {
                     ULONG seq=(Le32(p+start+pos)>>16)&0x7fff;

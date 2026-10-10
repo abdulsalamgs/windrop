@@ -18,11 +18,15 @@ int main(int argc,char** argv) {
         windrop::binary_stdio();
         transport->initialize();
         auto logger=std::make_shared<Logger>();
+        logger->events().disable(); // stdout is exclusively the binary radio pipe
         RtlKestrelDevice radio(RtlAdapter(transport,logger),logger,kestrel::ChipVariant::C8852C);
-        if(!radio.BringUpMonitor({6,0,CHANNEL_WIDTH_20})) throw std::runtime_error("RTL8852CE firmware/monitor initialization failed");
-        radio.EnableTxScheduler();
+        // InitWrite performs monitor + queue/role/CAM initialization; enabling
+        // only the scheduler leaves the HAL's transmit path disabled.
+        radio.InitWrite({6,0,CHANNEL_WIDTH_20});
+        if(!radio.IsTransmitReady()) throw std::runtime_error("RTL8852CE firmware/transmit initialization failed");
         radio.SetCcaMode(false);
         uint8_t mac[6]; if(!radio.GetPermanentMacAddress(mac)) throw std::runtime_error("RTL8852CE has no valid permanent MAC");
+        if(!radio.SetTransmitAddress(mac)) throw std::runtime_error("Cannot configure radio transmit address");
         windrop::write_record(stdout,windrop::Message::Hello,mac,6);
         std::mutex output_mutex;
         std::atomic<bool> rx_failed{false};

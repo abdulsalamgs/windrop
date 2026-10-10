@@ -37,9 +37,51 @@ windrop doctor --native --json
 ready: false; backend: windows-pcie; driverLoaded: false; exit code: 3.
 ```
 
-The catalog and kernel binary are unsigned. No driver was installed or loaded; no firmware, radio, signing or boot configuration was changed. These build checks do not verify the driver's loaded query path, PCI resource handling or device lifecycle. The frame/DMA plane and AWDL integration remain unimplemented. [Native driver scope and remaining work](WINDOWS-DRIVER.md).
+The catalog and kernel binary are unsigned. No driver was installed or loaded; no physical radio, signing or boot configuration was changed. These build checks do not verify loaded PCI resource handling, DMA or device lifecycle. The native frame/DMA and AWDL implementation is described below. [Native driver scope and remaining qualification](WINDOWS-DRIVER.md).
 
 During this increment, an overlapping app build/test run encountered Windows file locks and one controller-reset assertion failed before its reply type was captured. After separating build and tests, six isolated reset-test runs and three complete serial runs passed (290 tests each). The assertion now includes the reply's error/event type without session credentials so a recurrence can distinguish delayed controller cleanup from event ordering. No production radio change or proven fix for that isolated assertion failure is claimed.
+
+## Native frame and AWDL integration
+
+The native workers build against pinned Devourer, OWL and radiotap sources using
+MSVC x64, with `/W4 /WX` for Windrop workers. The kernel driver passes compilation,
+code analysis and catalog/INF validation. `build-native.ps1 -Publish` successfully
+produces the development ZIP containing the workers, Wintun/libusb DLLs,
+self-contained Windows radio bridge, unsigned driver, licenses and full sources.
+
+```text
+./scripts/test-native.ps1
+PASS: exact 48-byte IPv6 delivery from an independent AWDL wire fixture.
+PASS: non-Apple LLC frames dropped.
+PASS: invalid AWDL data prefixes dropped.
+PASS: captured iPhone idle sequence retains social windows, blanks channel 132.
+
+windrop-awdl run (original Realtek driver still installed)
+Driver unavailable; Radio worker stopped; exit code 3.
+No awdl0 adapter created.
+```
+
+The first three public CLI checks were developed red/green: missing replay
+implementation, accepting the wrong LLC OUI, and accepting the wrong AWDL prefix
+each failed before the corresponding implementation/fix. The channel regression
+uses the independent iPhone idle sequence recorded in pinned OWL's tests inside a
+hand-built MIF: before review correction replay advertised channel 132; afterward
+it advertises `0,0,149,0,0,0,0,0,6,0,149,0,0,0,0,0`. No Windrop serializer generates
+the expected fixture. These are offline checks, not a captured full iPhone transfer.
+
+The standards review identified unsupported PCI-header writes, writable DMA
+ownership registers and hardware mutation during diagnostic cleanup. Fixes use
+the OS function-level reset interface, protect descriptor configuration and track
+explicit hardware initialization. The spec review identified required unaligned
+HAL accesses and unsupported infrastructure windows in normal iPhone sequences;
+aligned splitting and social-window filtering address those findings. Reset/DMA
+failure paths, Wintun and scheduling still require loaded fault-injection tests.
+
+The final serial .NET build passed with zero warnings/errors, and all 290 existing
+tests passed. The native pipeline was attempted without installing its driver and
+stopped at missing-driver diagnostics. Secure Boot and the original Wi-Fi driver
+remain in place; no native hardware readiness or successful iPhone transfer is
+claimed.
 
 ## Limits
 

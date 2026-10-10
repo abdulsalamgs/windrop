@@ -22,6 +22,7 @@
 
 typedef struct _DEVICE_CONTEXT {
     WINDROP_RADIO_INFO Info;
+    KMUTEX HardwareLock;
     volatile UCHAR* Registers;
     DEVICE_RESET_INTERFACE_STANDARD Reset;
     KEVENT ResetEvent;
@@ -33,7 +34,7 @@ typedef struct _DEVICE_CONTEXT {
     USHORT TxWrite[13];
     USHORT RxWrite, ReportWrite;
     BOOLEAN Busy[RADIO_PAGES];
-    BOOLEAN Rings, InD0, Touched, DmaPublished, Removed;
+    BOOLEAN Rings, InD0, Touched, DmaPublished, Removed, RemovePending;
     ULONG AssemblyLength;
     UCHAR Assembly[WINDROP_FRAME_MAX];
 } DEVICE_CONTEXT;

@@ -61,7 +61,7 @@ internal static class NativeRadioDiagnostics
             return new(false, "windows-pcie",
                 (info.Capabilities & 3) == 3
                     ? "The Windows RTL8852CE frame driver is loaded. Start scripts/start-native.ps1 to run AWDL, then use windrop doctor to check the bridge. Hardware interoperability remains unqualified."
-                    : "The Windows RTL8852CE driver lacks register/frame DMA capabilities. Rebuild the native package.",
+                    : "The Windows RTL8852CE driver lacks register/frame DMA capabilities or supported OS function-level reset. See docs/WINDOWS-DRIVER.md.",
                 true, "10ec", "c852", info.Bar2Bytes);
         }
         finally { Marshal.FreeHGlobal(detail); }

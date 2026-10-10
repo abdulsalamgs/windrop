@@ -32,3 +32,16 @@ index 4b7dd09..a30c110 100644
  if(DEVOURER_PCIE)
      add_executable(pcieprobe
          examples/pcieprobe/main.cpp
+diff --git a/src/kestrel/RtlKestrelDevice.h b/src/kestrel/RtlKestrelDevice.h
+index ce5fa08..1d511e4 100644
+--- a/src/kestrel/RtlKestrelDevice.h
++++ b/src/kestrel/RtlKestrelDevice.h
+@@ -59,6 +59,8 @@ public:
+   void Init(Action_ParsedRadioPacket packetProcessor,
+             SelectedChannel channel) override;
+   void InitWrite(SelectedChannel channel) override;
++  bool IsTransmitReady() const { return _tx_up && _tx_data_ok; }
++  bool SetTransmitAddress(const uint8_t mac[6]) { return _hal.add_self_sta(mac, 0); }
+   void StartRxLoop(Action_ParsedRadioPacket packetProcessor) override;
+   void StopRxLoop() override { _rx_stop = true; }
+   /* Join the WP-release drain thread (started by InitWrite) before the caller
