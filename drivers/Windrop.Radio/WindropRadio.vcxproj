@@ -38,6 +38,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="driver.c" />
+    <ClCompile Include="radio.c" />
+    <ClInclude Include="radio.h" />
     <ClInclude Include="protocol.h" />
     <Inf Include="WindropRadio.inf" />
     <FilesToPackage Include="$(TargetPath)" />

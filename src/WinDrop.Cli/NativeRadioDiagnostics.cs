@@ -4,8 +4,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace WinDrop.Cli;
 
-// The only native-driver operation currently exposed is a bounded, read-only
-// capability query. Keep this in step with drivers/Windrop.Radio/protocol.h.
+// CLI diagnostics use the read-only capability query. The hardware worker owns
+// the writable frame interface. Keep this in step with the driver ABI.
 internal static class NativeRadioDiagnostics
 {
     private static readonly Guid InterfaceId = new("2e63236f-48e1-4a3a-baf5-387599bf54a6");
@@ -52,13 +52,16 @@ internal static class NativeRadioDiagnostics
             if (!DeviceIoControl(device, GetInfo, IntPtr.Zero, 0, out DriverInfo info,
                     (uint)Marshal.SizeOf<DriverInfo>(), out uint read, IntPtr.Zero))
                 return Failure("querying Windows radio capabilities");
-            if (read != 24 || info.Size != 24 || info.Version != 1
+            if (read != 24 || info.Size != 24 || info.Version != 2
                 || info.VendorId != 0x10ec || info.DeviceId != 0xc852 || info.Bar2Bytes < 0x100000)
                 return Unavailable("The Windows driver reported an incompatible identity or protocol.");
 
-            // Presence is never readiness: this increment has no frame or AWDL plane.
+            // Driver presence establishes transport capabilities only. The regular
+            // doctor command checks the running authenticated AWDL bridge.
             return new(false, "windows-pcie",
-                "The Windows RTL8852CE driver is loaded. Raw frame transmission/reception and AWDL integration are not implemented yet.",
+                (info.Capabilities & 3) == 3
+                    ? "The Windows RTL8852CE frame driver is loaded. Start scripts/start-native.ps1 to run AWDL, then use windrop doctor to check the bridge. Hardware interoperability remains unqualified."
+                    : "The Windows RTL8852CE driver lacks register/frame DMA capabilities. Rebuild the native package.",
                 true, "10ec", "c852", info.Bar2Bytes);
         }
         finally { Marshal.FreeHGlobal(detail); }

@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: GPL-2.0-only
+#pragma once
+#include <ntddk.h>
+#include <wdf.h>
+#include "protocol.h"
+
+#define RADIO_BDS 256
+#define RADIO_PAGES 512
+#define RADIO_RX_BYTES 11496
+#define RADIO_WD_BYTES 128
+#define RADIO_PAYLOAD_BYTES 4096
+#define RADIO_FW_BYTES 2304
+#define RADIO_ALIGN(n) (((n) + 4095u) & ~4095u)
+#define RADIO_RXQ_BD RADIO_ALIGN(13u * RADIO_BDS * 8u)
+#define RADIO_RPQ_BD (RADIO_RXQ_BD + 4096u)
+#define RADIO_RXQ (RADIO_RPQ_BD + 4096u)
+#define RADIO_RPQ (RADIO_RXQ + RADIO_ALIGN(RADIO_BDS * RADIO_RX_BYTES))
+#define RADIO_WD (RADIO_RPQ + RADIO_ALIGN(RADIO_BDS * RADIO_RX_BYTES))
+#define RADIO_PAYLOAD (RADIO_WD + RADIO_ALIGN(RADIO_PAGES * RADIO_WD_BYTES))
+#define RADIO_FW (RADIO_PAYLOAD + RADIO_ALIGN(RADIO_PAGES * RADIO_PAYLOAD_BYTES))
+#define RADIO_DMA_BYTES (RADIO_FW + RADIO_ALIGN(RADIO_BDS * RADIO_FW_BYTES))
+
+typedef struct _DEVICE_CONTEXT {
+    WINDROP_RADIO_INFO Info;
+    volatile UCHAR* Registers;
+    BUS_INTERFACE_STANDARD Bus;
+    WDFDMAENABLER Dma;
+    WDFCOMMONBUFFER Buffer;
+    UCHAR* Slab;
+    ULONG DmaBase;
+    USHORT TxWrite[13];
+    USHORT RxWrite, ReportWrite;
+    BOOLEAN Busy[RADIO_PAGES];
+    BOOLEAN Rings, InD0;
+    ULONG AssemblyLength;
+    UCHAR Assembly[WINDROP_FRAME_MAX];
+} DEVICE_CONTEXT;
+WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVICE_CONTEXT, DeviceContext)
+
+ULONG RadioRead(DEVICE_CONTEXT* Context, ULONG Offset, ULONG Width);
+VOID RadioWrite(DEVICE_CONTEXT* Context, ULONG Offset, ULONG Width, ULONG Value);
+NTSTATUS RadioStop(DEVICE_CONTEXT* Context);
+NTSTATUS RadioSetup(DEVICE_CONTEXT* Context);
+NTSTATUS RadioTransmit(DEVICE_CONTEXT* Context, ULONG Channel, const UCHAR* Data, ULONG Length);
+NTSTATUS RadioReceive(DEVICE_CONTEXT* Context, UCHAR* Output, ULONG* Length);
+BOOLEAN RadioProtectedRegister(ULONG Offset, ULONG Width);

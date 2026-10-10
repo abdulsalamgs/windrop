@@ -1,0 +1,34 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4b7dd09..a30c110 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -175,8 +175,16 @@ if(NOT DEVOURER_SANITIZE STREQUAL "")
+ endif()
+ 
+ # Find pkg-config and then use it to locate libusb.
+-find_package(PkgConfig REQUIRED)
+-pkg_check_modules(libusb REQUIRED IMPORTED_TARGET libusb-1.0)
++if(WIN32)
++    add_library(PkgConfig::libusb SHARED IMPORTED)
++    set_target_properties(PkgConfig::libusb PROPERTIES
++        IMPORTED_IMPLIB "${LIBUSB_SOURCE}/VS2022/MS64/dll/libusb-1.0.lib"
++        IMPORTED_LOCATION "${LIBUSB_SOURCE}/VS2022/MS64/dll/libusb-1.0.dll"
++        INTERFACE_INCLUDE_DIRECTORIES "${LIBUSB_SOURCE}/include")
++else()
++    find_package(PkgConfig REQUIRED)
++    pkg_check_modules(libusb REQUIRED IMPORTED_TARGET libusb-1.0)
++endif()
+ 
+ add_library(devourer
+     # --- generation-agnostic core (always compiled) ---
+@@ -619,6 +627,10 @@ endif()
+ # milestones (id/MMIO sanity -> power-on + EFUSE -> firmware download). rxdemo's
+ # DEVOURER_PCIE_BDF branch is the full-RX consumer; this probe validates the
+ # layers below it one at a time. Linux/vfio only.
++if(WINDROP_RADIO_ONLY)
++    return()
++endif()
++
+ if(DEVOURER_PCIE)
+     add_executable(pcieprobe
+         examples/pcieprobe/main.cpp

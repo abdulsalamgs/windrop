@@ -1,0 +1,166 @@
+diff --git a/platform.h b/platform.h
+index e2c6c63..76de4b1 100644
+--- a/platform.h
++++ b/platform.h
+@@ -8,6 +8,12 @@
+ 
+ #define le16_to_cpu		le16toh
+ #define le32_to_cpu		le32toh
++#ifdef _MSC_VER
++#include <stdint.h>
++#include <string.h>
++static inline uint16_t get_unaligned_le16(const void* p) { uint16_t v; memcpy(&v,p,2); return v; }
++static inline uint32_t get_unaligned_le32(const void* p) { uint32_t v; memcpy(&v,p,4); return v; }
++#else
+ #define get_unaligned(p)					\
+ ({								\
+ 	struct packed_dummy_struct {				\
+@@ -18,3 +24,5 @@
+ })
+ #define get_unaligned_le16(p)	le16_to_cpu(get_unaligned((uint16_t *)(p)))
+ #define get_unaligned_le32(p)	le32_to_cpu(get_unaligned((uint32_t *)(p)))
++
++#endif
+diff --git a/radiotap.c b/radiotap.c
+index 3e6d761..cb7d58d 100644
+--- a/radiotap.c
++++ b/radiotap.c
+@@ -17,28 +17,28 @@
+ /* function prototypes and related defs are in radiotap_iter.h */
+ 
+ static const struct radiotap_align_size rtap_namespace_sizes[] = {
+-	[IEEE80211_RADIOTAP_TSFT] = { .align = 8, .size = 8, },
+-	[IEEE80211_RADIOTAP_FLAGS] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_RATE] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_CHANNEL] = { .align = 2, .size = 4, },
+-	[IEEE80211_RADIOTAP_FHSS] = { .align = 2, .size = 2, },
+-	[IEEE80211_RADIOTAP_DBM_ANTSIGNAL] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_DBM_ANTNOISE] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_LOCK_QUALITY] = { .align = 2, .size = 2, },
+-	[IEEE80211_RADIOTAP_TX_ATTENUATION] = { .align = 2, .size = 2, },
+-	[IEEE80211_RADIOTAP_DB_TX_ATTENUATION] = { .align = 2, .size = 2, },
+-	[IEEE80211_RADIOTAP_DBM_TX_POWER] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_ANTENNA] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_DB_ANTSIGNAL] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_DB_ANTNOISE] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_RX_FLAGS] = { .align = 2, .size = 2, },
+-	[IEEE80211_RADIOTAP_TX_FLAGS] = { .align = 2, .size = 2, },
+-	[IEEE80211_RADIOTAP_RTS_RETRIES] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_DATA_RETRIES] = { .align = 1, .size = 1, },
+-	[IEEE80211_RADIOTAP_MCS] = { .align = 1, .size = 3, },
+-	[IEEE80211_RADIOTAP_AMPDU_STATUS] = { .align = 4, .size = 8, },
+-	[IEEE80211_RADIOTAP_VHT] = { .align = 2, .size = 12, },
+-	[IEEE80211_RADIOTAP_TIMESTAMP] = { .align = 8, .size = 12, },
++	{ .align = 8, .size = 8, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 1, },
++	{ .align = 2, .size = 4, },
++	{ .align = 2, .size = 2, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 1, },
++	{ .align = 2, .size = 2, },
++	{ .align = 2, .size = 2, },
++	{ .align = 2, .size = 2, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 1, },
++	{ .align = 2, .size = 2, },
++	{ .align = 2, .size = 2, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 1, },
++	{ .align = 1, .size = 3, },
++	{ .align = 4, .size = 8, },
++	{ .align = 2, .size = 12, },
++	{ .align = 8, .size = 12, },
+ 	/*
+ 	 * add more here as they are defined in radiotap.h
+ 	 */
+@@ -123,9 +123,9 @@ int ieee80211_radiotap_iterator_init(
+ 	/* find payload start allowing for extended bitmap(s) */
+ 
+ 	if (iterator->_bitmap_shifter & (1<<IEEE80211_RADIOTAP_EXT)) {
+-		if ((unsigned long)iterator->_arg -
+-		    (unsigned long)iterator->_rtheader + sizeof(uint32_t) >
+-		    (unsigned long)iterator->_max_length)
++		if ((uintptr_t)iterator->_arg -
++		    (uintptr_t)iterator->_rtheader + sizeof(uint32_t) >
++		    (uintptr_t)iterator->_max_length)
+ 			return -EINVAL;
+ 		while (get_unaligned_le32(iterator->_arg) &
+ 					(1 << IEEE80211_RADIOTAP_EXT)) {
+@@ -137,10 +137,10 @@ int ieee80211_radiotap_iterator_init(
+ 			 * stated radiotap header length
+ 			 */
+ 
+-			if ((unsigned long)iterator->_arg -
+-			    (unsigned long)iterator->_rtheader +
++			if ((uintptr_t)iterator->_arg -
++			    (uintptr_t)iterator->_rtheader +
+ 			    sizeof(uint32_t) >
+-			    (unsigned long)iterator->_max_length)
++			    (uintptr_t)iterator->_max_length)
+ 				return -EINVAL;
+ 		}
+ 
+@@ -292,8 +292,8 @@ int ieee80211_radiotap_iterator_next(
+ 		 * multibyte elements from the radiotap area.
+ 		 */
+ 
+-		pad = ((unsigned long)iterator->_arg -
+-		       (unsigned long)iterator->_rtheader) & (align - 1);
++		pad = ((uintptr_t)iterator->_arg -
++		       (uintptr_t)iterator->_rtheader) & (align - 1);
+ 
+ 		if (pad)
+ 			iterator->_arg += align - pad;
+@@ -301,9 +301,9 @@ int ieee80211_radiotap_iterator_next(
+ 		if (iterator->_arg_index % 32 == IEEE80211_RADIOTAP_VENDOR_NAMESPACE) {
+ 			int vnslen;
+ 
+-			if ((unsigned long)iterator->_arg + size -
+-			    (unsigned long)iterator->_rtheader >
+-			    (unsigned long)iterator->_max_length)
++			if ((uintptr_t)iterator->_arg + size -
++			    (uintptr_t)iterator->_rtheader >
++			    (uintptr_t)iterator->_max_length)
+ 				return -EINVAL;
+ 
+ 			oui = (*iterator->_arg << 16) |
+@@ -337,9 +337,9 @@ int ieee80211_radiotap_iterator_next(
+ 		 * max_length on the last arg, never exceeding it.
+ 		 */
+ 
+-		if ((unsigned long)iterator->_arg -
+-		    (unsigned long)iterator->_rtheader >
+-		    (unsigned long)iterator->_max_length)
++		if ((uintptr_t)iterator->_arg -
++		    (uintptr_t)iterator->_rtheader >
++		    (uintptr_t)iterator->_max_length)
+ 			return -EINVAL;
+ 
+ 		/* these special ones are valid in each bitmap word */
+diff --git a/radiotap.h b/radiotap.h
+index c78de30..720680e 100644
+--- a/radiotap.h
++++ b/radiotap.h
+@@ -30,6 +30,9 @@
+ /**
+  * struct ieee82011_radiotap_header - base radiotap header
+  */
++#ifdef _MSC_VER
++#pragma pack(push, 1)
++#endif
+ struct ieee80211_radiotap_header {
+ 	/**
+ 	 * @it_version: radiotap version, always 0
+@@ -51,6 +54,9 @@ struct ieee80211_radiotap_header {
+ 	 */
+ 	uint32_t it_present;
+ } __attribute__((__packed__));
++#ifdef _MSC_VER
++#pragma pack(pop)
++#endif
+ 
+ /* version is always 0 */
+ #define PKTHDR_RADIOTAP_VERSION	0
