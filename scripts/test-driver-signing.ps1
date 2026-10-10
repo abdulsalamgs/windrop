@@ -22,6 +22,7 @@ try {
     if (-not $rejected -or (Get-FileHash (Join-Path $output 'driver/WindropRadio.sys')).Hash -ne $protectedHash) { throw 'Existing package was not preserved' }
     Write-Host 'PASS: preparation refuses to overwrite an existing package.'
     $path = Join-Path $output 'driver/WindropRadio.sys'
+    $signedBytes = [IO.File]::ReadAllBytes($path)
     $bytes = [IO.File]::ReadAllBytes($path); $bytes[512] = $bytes[512] -bxor 1
     [IO.File]::WriteAllBytes($path,$bytes)
     $rejected = $false
@@ -34,6 +35,16 @@ try {
     try { & $verify -PackageDirectory $output } catch { $rejected = $true }
     if (-not $rejected) { throw 'A rewritten manifest bypassed the embedded signature check' }
     Write-Host 'PASS: an updated manifest cannot bypass a broken embedded signature.'
+    [IO.File]::WriteAllBytes($path,$signedBytes)
+    $state.sha256.'driver/WindropRadio.sys' = (Get-FileHash -LiteralPath $path).Hash
+    $inf = Join-Path $output 'driver/WindropRadio.inf'
+    Add-Content -LiteralPath $inf -Value '; altered after catalog signing'
+    $state.sha256.'driver/WindropRadio.inf' = (Get-FileHash -LiteralPath $inf).Hash
+    $state | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $output 'package.json') -Encoding UTF8
+    $rejected = $false
+    try { & $verify -PackageDirectory $output } catch { $rejected = $true }
+    if (-not $rejected) { throw 'A rewritten manifest bypassed signed catalog membership' }
+    Write-Host 'PASS: an updated manifest cannot bypass altered catalog members.'
 } finally {
     # Only remove the private signing key this test created, never a trusted key.
     if ($certificate -and (Test-Path -LiteralPath "Cert:/CurrentUser/My/$certificate")) {

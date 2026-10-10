@@ -120,14 +120,15 @@ stopped at missing-driver diagnostics. Secure Boot and the original Wi-Fi driver
 remain in place; no native hardware readiness or successful iPhone transfer is
 claimed.
 
-## Limits
-
 ## Local test-signing preparation
 
-`scripts/test-driver-signing.ps1` passes four public CLI checks: the unsigned
+`scripts/test-driver-signing.ps1` passes five public CLI checks: the unsigned
 build is preserved and the certificate remains untrusted; an existing output is
 preserved; changed package bytes are rejected; and a modified SYS is rejected
-even when its manifest hash is updated. The initial missing preparation command
+even when its manifest hash is updated; altered INF catalog membership is also
+rejected despite an updated manifest. Both SYS and INF are checked against the
+signed catalog with WinVerifyTrust. The catalog regression failed before its fix.
+The initial missing preparation command
 failed before implementation. Windows reports the self-signed root as an
 `UnknownError` in PowerShell; verification now uses WinVerifyTrust's numeric
 result and permits only success or the exact untrusted-root result for the
