@@ -14,3 +14,5 @@ Requirements:
 - Provide source build and Windows publish scripts, radio setup instructions, automated public CLI/bridge tests, and a public GitHub PR.
 
 Agreed test boundaries: public CLI and radio bridge, including readiness, discovery start/stop, consent, and byte-for-byte delivery. Real iPhone interoperability and throughput require hardware testing; passing a loopback test does not establish either.
+
+The user subsequently required using the built-in RTL8852CE while Windows stays running. A native driver port is being developed toward that requirement. Its current increment is limited to a buildable KMDF identity query and public CLI diagnostics; it must report unavailable for AirDrop until a raw frame plane, AWDL and real hardware qualification exist. Building source does not authorize replacing the installed driver or changing Secure Boot/test-signing policy. See [WINDOWS-DRIVER.md](WINDOWS-DRIVER.md).

@@ -21,6 +21,8 @@ The desktop package is `publish/Windrop-windows-x64.zip`. It includes .NET and r
 
 Read [radio setup and hardware selection](docs/RADIO-SETUP.md) before expecting a phone to appear. With the radio connected, turn on Wi-Fi and Bluetooth on the iPhone and choose AirDrop's **Everyone for 10 Minutes**. Select Windrop from the native Share → AirDrop menu and approve the transfer on Windows.
 
+A [native RTL8852CE Windows driver](docs/WINDOWS-DRIVER.md) is under development. Its first increment builds and provides a read-only identity query; raw frames and AWDL are not implemented, and it has not been installed or hardware-tested. `windrop doctor --native --json` checks this path without a Linux bridge key and reports it as unavailable for AirDrop.
+
 ## CLI
 
 ```powershell

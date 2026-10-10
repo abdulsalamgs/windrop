@@ -8,6 +8,26 @@ namespace WinDrop.Protocol.Tests;
 public class CliTests
 {
     [Fact]
+    public async Task Doctor_rejects_selecting_both_native_driver_and_remote_bridge()
+    {
+        var result = await RunAsync(["doctor", "--native", "--bridge", "127.0.0.1"], key: null);
+        Assert.Equal(1, result.ExitCode);
+        Assert.Contains("Choose --native or --bridge", result.Output);
+    }
+
+    [Fact]
+    public async Task Doctor_native_explains_unavailable_Windows_radio_without_bridge_credentials()
+    {
+        var result = await RunAsync(["doctor", "--native", "--json"], key: null);
+        Assert.Equal(3, result.ExitCode);
+        using var json = JsonDocument.Parse(result.Output);
+        Assert.False(json.RootElement.GetProperty("ready").GetBoolean());
+        Assert.Equal("windows-pcie", json.RootElement.GetProperty("backend").GetString());
+        Assert.Contains("Windows", json.RootElement.GetProperty("reason").GetString());
+        Assert.DoesNotContain("WINDROP_RADIO_KEY", result.Output);
+    }
+
+    [Fact]
     public async Task Public_CLI_send_and_receive_deliver_the_original_file()
     {
         string directory = Path.Combine(Path.GetTempPath(), "windrop-cli-" + Guid.NewGuid().ToString("N"));

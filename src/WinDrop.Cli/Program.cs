@@ -56,12 +56,13 @@ static int PrintUsage()
           windrop receive [--dir <path>] [--port <n>] [--flags <hex>] [--yes] [--no-early-ask]
           windrop send [--to <name>| --peer <host>] [--icon <image>] <file> [file...]
           windrop browse                   list nearby peers
-          windrop doctor [--json]           check radio readiness
+          windrop doctor [--json] [--native] check bridge or Windows driver readiness
 
         Set WINDROP_RADIO_KEY and start windrop-radio on a Linux/WSL2 OWL radio.
         WINDROP_RADIO_HOST defaults to 127.0.0.1; --bridge <host> overrides it.
 
-        A dedicated compatible USB Wi-Fi adapter is required for the AWDL radio.
+        The Linux/WSL2 radio needs a compatible adapter. The native Windows driver
+        is under development; --native checks it without contacting the Linux bridge.
         --lan is an explicit development mode for ordinary-network protocol testing.
         See docs/RADIO-SETUP.md. --yes explicitly disables incoming consent prompts.
         """);
@@ -422,10 +423,9 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
 
 /// <summary>
-/// Picks the transport. Without --bridge we drive the local radio over mDNS, which
-/// reaches other WinDrop instances, opendrop and a Mac with BrowseAllInterfaces. With
-/// it, a Linux box running OWL lends us its AWDL interface — the only route to an
-/// iPhone, and the only one that has never been tested against a real device.
+/// Uses the authenticated Linux AWDL bridge by default. Ordinary LAN transport is
+/// selected only by --lan. The native Windows driver currently supplies diagnostics
+/// only and is not yet a transfer transport.
 /// </summary>
 static IAirDropTransport CreateTransport(string[] args)
 {
@@ -438,6 +438,14 @@ static IAirDropTransport CreateTransport(string[] args)
 
 static async Task<int> DoctorAsync(string[] args, CancellationToken ct)
 {
+    if (args.Contains("--native"))
+    {
+        var native = NativeRadioDiagnostics.Check();
+        Console.WriteLine(args.Contains("--json")
+            ? JsonSerializer.Serialize(native, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
+            : $"Not ready: {native.Reason}");
+        return 3;
+    }
     var readiness = await RadioSettings.CheckAsync(ArgumentValue(args, "--bridge"), ct: ct);
     Console.WriteLine(args.Contains("--json")
         ? JsonSerializer.Serialize(readiness, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })
@@ -459,7 +467,7 @@ static void ValidateArguments(string[] args)
     {
         "receive" => ["--yes", "--early-ask", "--no-early-ask", "--lan"],
         "send" or "browse" => ["--lan"],
-        "doctor" => ["--json"],
+        "doctor" => ["--json", "--native"],
         _ => []
     };
     for (int i = 1; i < args.Length; i++)
@@ -477,6 +485,7 @@ static void ValidateArguments(string[] args)
             throw new ArgumentException("Unexpected positional argument.");
     }
     if (args.Contains("--lan") && args.Contains("--bridge")) throw new ArgumentException("Choose --lan or --bridge.");
+    if (args.Contains("--native") && args.Contains("--bridge")) throw new ArgumentException("Choose --native or --bridge.");
     if (command == "receive" && !args.Contains("--lan") && ArgumentValue(args, "--port") is { } radioPort && radioPort != "8770")
         throw new ArgumentException("Radio receivers use port 8770. --port is available in --lan development mode.");
 }

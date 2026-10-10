@@ -1,0 +1,66 @@
+[Version]
+Signature = "$WINDOWS NT$"
+Class = WindropRadio
+ClassGuid = {58a9ff34-dc94-4a3b-a88f-a5c7fb7508f1}
+Provider = %Provider%
+DriverVer = 10/10/2026,0.1.0.0
+CatalogFile = WindropRadio.cat
+PnpLockdown = 1
+
+[ClassInstall32]
+AddReg = ClassReg
+
+[ClassReg]
+HKR,,,0,"Windrop PCIe Radio"
+HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)"
+
+[Manufacturer]
+%Provider% = Devices,NTamd64.10.0...22000
+
+[Devices.NTamd64.10.0...22000]
+%Device% = Radio,PCI\VEN_10EC&DEV_C852
+
+[DestinationDirs]
+DriverCopy = 13
+
+[SourceDisksNames]
+1 = %Media%
+
+[SourceDisksFiles]
+WindropRadio.sys = 1
+
+[Radio.NT]
+CopyFiles = DriverCopy
+
+[DriverCopy]
+WindropRadio.sys
+
+[Radio.NT.HW]
+AddReg = DeviceReg
+
+[DeviceReg]
+HKR,,Security,,"D:P(A;;GA;;;SY)(A;;GA;;;BA)"
+HKR,,Exclusive,0x00010001,1
+HKR,,DeviceCharacteristics,0x00010001,0x100
+
+[Radio.NT.Services]
+AddService = WindropRadio,0x00000002,RadioService
+
+[RadioService]
+DisplayName = %Service%
+ServiceType = 1
+StartType = 3
+ErrorControl = 1
+ServiceBinary = %13%\WindropRadio.sys
+
+[Radio.NT.Wdf]
+KmdfService = WindropRadio,KmdfConfig
+
+[KmdfConfig]
+KmdfLibraryVersion = 1.33
+
+[Strings]
+Provider = "Windrop"
+Device = "Windrop RTL8852CE Radio (development)"
+Service = "Windrop PCIe Radio"
+Media = "Windrop Driver Package"

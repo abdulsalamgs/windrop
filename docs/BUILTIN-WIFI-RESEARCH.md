@@ -4,6 +4,8 @@ Research date: 2026-10-10. Target: Realtek RTL8852CE PCIe Wi-Fi, Windows driver 
 
 Inspected Devourer revision: `f369aac553c9ce884901115ef9e66509f93c5683`.
 
+Implementation update: the first [native Windows driver increment](WINDOWS-DRIVER.md) now builds and exposes a read-only identity query. It has not been loaded; the raw frame/DMA plane and AWDL integration remain unimplemented. This does not change the hardware qualification findings below.
+
 ## Finding
 
 The RTL8852CE is **not inherently incapable of raw Wi-Fi transmission**. OpenIPC's Devourer project reports monitor reception and packet injection on this exact PCIe chip (`10ec:c852`) on 5 and 6 GHz. This is a credible hardware lead, not a successful Windrop/iPhone test. Its PCIe backend currently runs on Linux; Windows support in the same project is for USB devices. [Devourer hardware and platform support](https://github.com/OpenIPC/devourer/tree/f369aac553c9ce884901115ef9e66509f93c5683#supported-hardware).

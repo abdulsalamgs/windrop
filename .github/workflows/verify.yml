@@ -3,6 +3,27 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  driver:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Visual Studio driver integration and Spectre libraries
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vsPath = & $vswhere -latest -version '[17.0,18.0)' -products '*' -property installationPath
+          if (-not $vsPath) { throw 'Visual Studio 2022 not found.' }
+          $setupPath = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
+          $setupArgs = @('modify', '--installPath', ('"' + $vsPath + '"'), '--add', 'Microsoft.Windows.DriverKit', '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre', '--quiet', '--norestart')
+          $setup = Start-Process -FilePath $setupPath -ArgumentList $setupArgs -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -notin @(0, 3010)) { throw "VS setup failed: $($setup.ExitCode)" }
+      - name: Compile and validate unsigned development driver
+        shell: pwsh
+        run: ./scripts/build-driver.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windrop-RTL8852CE-unsigned-development-driver
+          path: build/driver/WindropRadio
   protocol:
     strategy:
       matrix:

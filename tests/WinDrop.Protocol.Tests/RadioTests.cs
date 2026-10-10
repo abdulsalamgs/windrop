@@ -102,7 +102,8 @@ public class RadioTests
                     { ["op"] = "hello", ["token"] = key, ["reversePort"] = 1234 }.ToJsonString() + "\n"), timeout.Token);
                 using var reader = new StreamReader(client.GetStream());
                 var reply = JsonNode.Parse((await reader.ReadLineAsync(timeout.Token))!);
-                Assert.True(reply?["ok"]?.GetValue<bool>() == true, "A hello reply must precede discovery events.");
+                Assert.True(reply?["ok"]?.GetValue<bool>() == true,
+                    $"A hello reply must precede discovery events. Attempt {attempt}; error={reply?["error"]}; event={reply?["event"]}.");
                 // Let the real discovery writer fill this slow controller's receive window.
                 await Task.Delay(80, timeout.Token);
                 client.Client.LingerState = new LingerOption(true, 0);
