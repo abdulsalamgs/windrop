@@ -124,7 +124,8 @@ if ($Publish) {
         Copy-Item -LiteralPath $sourceFile -Destination $targetFile -Force
     }
     Copy-Item (Join-Path $repo 'THIRD-PARTY-NOTICES.md') -Destination $package
-    Copy-Item (Join-Path $repo 'native/README.md') -Destination $package
+    $packageReadme = (Get-Content (Join-Path $repo 'native/README.md') -Raw).Replace('](../', '](sources/windrop/')
+    [IO.File]::WriteAllText((Join-Path $package 'README.md'), $packageReadme, (New-Object Text.UTF8Encoding($false)))
     Compress-Archive -Path (Join-Path $package '*') -DestinationPath (Join-Path $repo 'publish/Windrop-native-development-x64.zip') -Force
     Write-Host 'Published native development package with corresponding source. The driver is unsigned and not installed.'
 }

@@ -27,6 +27,14 @@ patches through the build script. The native programs require the Microsoft
 Visual C++ 2015–2022 x64 runtime, installed by Visual Studio or the official
 [redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
 
+In an extracted development ZIP, build from `sources/windrop`. To use the
+packaged workers after signing/qualification, keep the separately built desktop
+package and run from the extracted native ZIP root:
+
+```powershell
+./sources/windrop/scripts/start-native.ps1 -NativeDirectory . -AppPath 'C:\path\to\desktop\Windrop.exe'
+```
+
 ## Architecture
 
 `WindropRadio.sys` owns a KMDF common buffer containing the AX TX/RX descriptor
