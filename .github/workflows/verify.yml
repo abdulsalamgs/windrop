@@ -1,0 +1,61 @@
+name: Verify Windrop
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  driver:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Install Visual Studio driver integration and Spectre libraries
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+          $vsPath = & $vswhere -latest -version '[17.0,18.0)' -products '*' -property installationPath
+          if (-not $vsPath) { throw 'Visual Studio 2022 not found.' }
+          $setupPath = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
+          $setupArgs = @('modify', '--installPath', ('"' + $vsPath + '"'), '--add', 'Microsoft.Windows.DriverKit', '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre', '--quiet', '--norestart')
+          $setup = Start-Process -FilePath $setupPath -ArgumentList $setupArgs -WindowStyle Hidden -Wait -PassThru
+          if ($setup.ExitCode -notin @(0, 3010)) { throw "VS setup failed: $($setup.ExitCode)" }
+      - name: Compile driver and native AWDL workers, verify replay, package sources
+        shell: pwsh
+        run: ./scripts/build-native.ps1 -Publish
+      - name: Verify signed virtual IPv6 packet flow and cancellation under backpressure
+        shell: pwsh
+        run: |
+          ./scripts/test-tunnel.ps1
+          ./scripts/test-tunnel.ps1 -Shutdown Eof
+      - name: Verify test-driver signing without trusting or installing it
+        shell: pwsh
+        run: ./scripts/test-driver-signing.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windrop-native-development-x64
+          path: publish/Windrop-native-development-x64.zip
+  protocol:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test tests/WinDrop.Protocol.Tests -c Release --nologo
+  desktop:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet build Windrop.sln -c Release --nologo --warnaserror
+      - run: dotnet publish src/Windrop.App -c Release -r win-x64 --self-contained true -o publish/windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windrop-windows-x64
+          path: publish/windows
