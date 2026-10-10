@@ -74,8 +74,11 @@ ownership registers and hardware mutation during diagnostic cleanup. Fixes use
 the OS function-level reset interface, protect descriptor configuration and track
 explicit hardware initialization. The spec review identified required unaligned
 HAL accesses and unsupported infrastructure windows in normal iPhone sequences;
-aligned splitting and social-window filtering address those findings. Reset/DMA
-failure paths, Wintun and scheduling still require loaded fault-injection tests.
+aligned splitting and social-window filtering address those findings. Further
+review corrected unsynchronized removal callbacks, an unsafe assumption about
+surprise removal and incomplete transmit initialization. Final Standards and
+Spec rechecks found no remaining substantive source findings. Reset/DMA failure
+paths, Wintun and scheduling still require loaded fault-injection tests.
 
 The final serial .NET build passed with zero warnings/errors, and all 290 existing
 tests passed. The native pipeline was attempted without installing its driver and
