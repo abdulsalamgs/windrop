@@ -37,7 +37,7 @@ windrop doctor --native --json
 ready: false; backend: windows-pcie; driverLoaded: false; exit code: 3.
 ```
 
-The catalog and kernel binary are unsigned. No driver was installed or loaded; no physical radio, signing or boot configuration was changed. These build checks do not verify loaded PCI resource handling, DMA or device lifecycle. The native frame/DMA and AWDL implementation is described below. [Native driver scope and remaining qualification](WINDOWS-DRIVER.md).
+The catalog and kernel binary are unsigned. The Windrop PCIe driver was not installed or loaded; no physical radio, signing or boot configuration was changed. These build checks do not verify loaded PCI resource handling, DMA or device lifecycle. The native frame/DMA and AWDL implementation is described below. [Native driver scope and remaining qualification](WINDOWS-DRIVER.md).
 
 During this increment, an overlapping app build/test run encountered Windows file locks and one controller-reset assertion failed before its reply type was captured. After separating build and tests, six isolated reset-test runs and three complete serial runs passed (290 tests each). The assertion now includes the reply's error/event type without session credentials so a recurrence can distinguish delayed controller cleanup from event ordering. No production radio change or proven fix for that isolated assertion failure is claimed.
 
@@ -81,11 +81,38 @@ aligned splitting and social-window filtering address those findings. Further
 review corrected unsynchronized removal callbacks, an unsafe assumption about
 surprise removal and incomplete transmit initialization. Final Standards and
 Spec rechecks found no remaining substantive source findings. Reset/DMA failure
-paths, Wintun and scheduling still require loaded fault-injection tests. Wintun
+paths and physical-radio scheduling still require loaded fault-injection tests. Wintun
 is now owned by a generic MIT tunnel worker, rather than dynamically loaded into
 the GPL3 AWDL program. A versioned, hash-pinned 7-Zip extractor fixes fresh Windows
 CI extraction of the libusb BCJ2/LZMA archive; Windows tar and CMake libarchive
 both failed on that codec before the correction.
+
+The public standalone tunnel was also tested against a real temporary signed
+Wintun adapter on Windows 11, without initializing the physical radio:
+
+```text
+./scripts/test-tunnel.ps1
+./scripts/test-tunnel.ps1 -Shutdown Eof
+PASS: only the explicitly configured link-local address is exposed.
+PASS: Windows UDP reaches tunnel stdout with exact payload bytes.
+PASS: tunnel stdin reaches Windows UDP with exact payload bytes.
+PASS: Stop exits with an undrained, saturated output pipe.
+PASS: EOF exits with an undrained, saturated output pipe.
+Owned temporary adapters are removed after each test.
+```
+
+Live testing first failed at `SetIpInterfaceEntry` with Windows error 87.
+Preserving Windows' link-local behavior fixes that error; disabling link-local
+behavior was the unsupported change. The next run reproduced the review's
+blocked-output shutdown defect. A bounded cancellable writer fixes Stop/EOF.
+The address-selection check then failed with two link-local addresses; removing
+only Windows' automatically generated link-local entry on the helper's own new
+adapter leaves the configured EUI-64 address. Each defect was observed before
+its correction. Packet checks exercise ordinary Windows UDP and independently
+constructed IPv6/UDP bytes, including the mandatory UDP checksum. They qualify
+this virtual-interface path only. The signed Wintun virtual driver was loaded;
+the unsigned Windrop PCIe driver remains uninstalled and no RF test was made.
+CI now runs both tunnel shutdown variants as well as offline replay.
 
 The final serial .NET build passed with zero warnings/errors, and all 290 existing
 tests passed. The native pipeline was attempted without installing its driver and

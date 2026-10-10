@@ -78,7 +78,7 @@ public:
                         else if(message.type!=windrop::Message::Frame) throw std::runtime_error("Worker control queue overflow");
                         changed_.notify_all();
                     }
-                    fault("Worker worker stopped");
+                    fault("Worker process stopped");
                 } catch(const std::exception& e) { fault(e.what()); }
             });
             writer_=std::thread([this] {

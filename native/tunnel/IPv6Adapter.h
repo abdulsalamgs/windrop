@@ -70,7 +70,7 @@ public:
             properties.Family=AF_INET6; properties.InterfaceLuid=interface_;
             check(GetIpInterfaceEntry(&properties),"Read IPv6 tunnel IPv6 settings");
             properties.NlMtu=mtu; properties.RouterDiscoveryBehavior=RouterDiscoveryDisabled;
-            properties.DisableDefaultRoutes=TRUE; properties.LinkLocalAddressBehavior=LinkLocalAlwaysOff;
+            properties.DisableDefaultRoutes=TRUE; properties.LinkLocalAddressBehavior=LinkLocalUnchanged;
             properties.DadTransmits=0;
             check(SetIpInterfaceEntry(&properties),"Configure IPv6 tunnel IPv6");
             InitializeUnicastIpAddressEntry(&address_);
@@ -80,6 +80,20 @@ public:
             address_.SuffixOrigin=IpSuffixOriginManual; address_.ValidLifetime=0xffffffff;
             address_.PreferredLifetime=0xffffffff; address_.DadState=IpDadStatePreferred;
             check(CreateUnicastIpAddressEntry(&address_),"Assign IPv6 link-local address"); address_created_=true;
+            // Windows rejects LinkLocalAlwaysOff for this IPv6 interface. Keep
+            // its supported behavior, then remove only other link-local entries
+            // on this newly created, exclusively owned adapter. Discovery must
+            // select the explicitly configured address, not Windows' random one.
+            MIB_UNICASTIPADDRESS_TABLE* addresses=nullptr;
+            check(GetUnicastIpAddressTable(AF_INET6,&addresses),"Read owned IPv6 addresses");
+            struct FreeAddresses { MIB_UNICASTIPADDRESS_TABLE* table; ~FreeAddresses(){FreeMibTable(table);} } free_addresses{addresses};
+            for(ULONG i=0;i<addresses->NumEntries;i++) {
+                auto& row=addresses->Table[i]; const auto& other=row.Address.Ipv6.sin6_addr;
+                if(row.InterfaceLuid.Value!=interface_.Value || other.u.Byte[0]!=0xfe || (other.u.Byte[1]&0xc0)!=0x80 ||
+                    memcmp(&other,&ip,sizeof(ip))==0) continue;
+                DWORD error=DeleteUnicastIpAddressEntry(&row);
+                if(error!=ERROR_NOT_FOUND) check(error,"Remove automatically created IPv6 address");
+            }
         } catch(...) { cleanup(); throw; }
     }
     ~IPv6Adapter() { cleanup(); }

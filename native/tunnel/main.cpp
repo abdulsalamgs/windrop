@@ -4,13 +4,54 @@
 #include <atomic>
 #include <thread>
 #include <algorithm>
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+
+// Output backpressure never blocks the adapter loop or its shutdown. Packet
+// overflow drops at the bounded queue; Stop/EOF cancels an outstanding write.
+class OutputPipe {
+    std::mutex mutex_;
+    std::condition_variable changed_;
+    std::deque<windrop::Record> queue_;
+    bool stopped_=false;
+    std::string fault_;
+    std::thread writer_;
+public:
+    OutputPipe() : writer_([this] {
+        try {
+            for(;;) {
+                windrop::Record record;
+                { std::unique_lock<std::mutex> lock(mutex_);
+                  changed_.wait(lock,[this]{return stopped_ || !queue_.empty();});
+                  if(stopped_) return; record=std::move(queue_.front()); queue_.pop_front(); }
+                windrop::write_record(stdout,record.type,record.bytes.data(),record.bytes.size());
+            }
+        } catch(const std::exception& error) { std::lock_guard<std::mutex> lock(mutex_); fault_=error.what(); }
+    }) {}
+    ~OutputPipe() {
+        { std::lock_guard<std::mutex> lock(mutex_); stopped_=true; changed_.notify_all(); }
+        while(WaitForSingleObject(writer_.native_handle(),10)==WAIT_TIMEOUT) CancelSynchronousIo(writer_.native_handle());
+        writer_.join();
+    }
+    void check() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if(!fault_.empty()) throw std::runtime_error(fault_);
+    }
+    void send(windrop::Message type,std::vector<uint8_t> bytes) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if(!fault_.empty()) throw std::runtime_error(fault_);
+        if(queue_.size()<32) { queue_.push_back({type,std::move(bytes)}); changed_.notify_one(); }
+    }
+};
 
 // This is a standalone IPv6 packet adapter, with no OWL/AWDL dependency.
 // stdout contains only bounded binary records; diagnostics go to stderr.
 static int serve(const std::wstring& name,const IN6_ADDR& address,uint32_t mtu) {
     IPv6Adapter adapter(name,address,mtu);
     windrop::binary_stdio();
-    windrop::write_record(stdout,windrop::Message::Hello,nullptr,0);
+    OutputPipe output;
+    output.send(windrop::Message::Hello,{});
     std::atomic<bool> stopped=false;
     std::string fault;
     std::thread input([&] {
@@ -36,9 +77,10 @@ static int serve(const std::wstring& name,const IN6_ADDR& address,uint32_t mtu) 
     } join{input,stopped};
     std::vector<uint8_t> packet;
     while(!stopped.load()) {
+        output.check();
         if(adapter.read(packet)) {
             if(packet.size()>=40 && (packet[0]>>4)==6 && 40+((static_cast<size_t>(packet[4])<<8)|packet[5])==packet.size())
-                windrop::write_record(stdout,windrop::Message::Frame,packet.data(),packet.size());
+                output.send(windrop::Message::Frame,std::move(packet));
         } else Sleep(1);
     }
     // The release/acquire stop flag publishes the input thread's diagnostic.

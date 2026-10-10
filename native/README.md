@@ -2,7 +2,7 @@
 
 This is an experimental RTL8852CE (`10ec:c852`) backend. The kernel frame
 transport and Windows OWL integration compile and pass offline frame checks.
-They have **not been loaded or qualified on hardware**. The development driver
+The RTL8852CE driver/radio path has **not been loaded or qualified on hardware**. The development driver
 is unsigned, so this package cannot currently connect the development PC to an
 iPhone with Secure Boot enabled. It never replaces a driver or changes boot
 policy automatically.
@@ -71,6 +71,8 @@ See [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md).
 ./build/native/Release/windrop-awdl.exe --help
 ./build/native/Release/windrop-tunnel.exe --help
 ./build/native/Release/windrop-awdl.exe replay capture.pcap packets.bin --peer aabbccddeeff
+./scripts/test-tunnel.ps1
+./scripts/test-tunnel.ps1 -Shutdown Eof
 ./scripts/start-native.ps1
 ```
 
@@ -78,6 +80,13 @@ Replay accepts classic little-endian PCAP v2.4, radiotap link type 127, with
 frames up to 4096 bytes. It initializes no hardware and overwrites the explicitly
 named output with concatenated decoded IPv6 packets. The replay peer argument
 registers a known sender for offline decoding only; live peers come from RF.
+
+`test-tunnel.ps1` requires administrator access and explicitly creates its own
+temporary virtual adapter using the signed Wintun driver. It verifies the sole
+configured link-local address, exact UDP payloads in both packet directions, and
+Stop or EOF with an undrained output pipe, then verifies adapter removal. It may
+add the signed Wintun package to Windows' driver store. It does not initialize
+the physical radio. CI runs these virtual-interface checks after the build.
 
 After a correctly signed driver has been installed and hardware qualified,
 `start-native.ps1` runs in administrator PowerShell. It checks the driver,

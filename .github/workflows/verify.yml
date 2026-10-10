@@ -23,6 +23,11 @@ jobs:
       - name: Compile driver and native AWDL workers, verify replay, package sources
         shell: pwsh
         run: ./scripts/build-native.ps1 -Publish
+      - name: Verify signed virtual IPv6 packet flow and cancellation under backpressure
+        shell: pwsh
+        run: |
+          ./scripts/test-tunnel.ps1
+          ./scripts/test-tunnel.ps1 -Shutdown Eof
       - uses: actions/upload-artifact@v4
         with:
           name: Windrop-native-development-x64
