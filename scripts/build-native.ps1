@@ -26,8 +26,11 @@ if (-not (Test-Path -LiteralPath $cmake)) { Expand-Archive -LiteralPath $cmakeZi
 $usb = Join-Path $dependencies 'libusb'
 if (-not (Test-Path -LiteralPath (Join-Path $usb 'VS2022/MS64/dll/libusb-1.0.dll'))) {
     New-Item -ItemType Directory -Force $usb | Out-Null
-    tar -xf $usbArchive -C $usb
-    if ($LASTEXITCODE -ne 0) { throw 'libusb extraction failed' }
+    # Windows Server's inbox tar lacks LZMA support. The already pinned CMake
+    # embeds libarchive with 7z support, so use it consistently on every host.
+    Push-Location $usb
+    try { Invoke-Checked $cmake @('-E', 'tar', 'xf', $usbArchive) }
+    finally { Pop-Location }
 }
 $wintun = Join-Path $dependencies 'wintun'
 if (-not (Test-Path -LiteralPath $wintun)) { Expand-Archive -LiteralPath $wintunZip -DestinationPath $dependencies }
