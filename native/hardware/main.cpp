@@ -16,6 +16,7 @@ int main(int argc,char** argv) {
         auto transport=std::make_shared<WindowsTransport>();
         if(std::string(argv[1])=="doctor") { puts("Driver ABI v2: register and frame DMA transport available. AWDL readiness requires the running AWDL worker."); return 0; }
         windrop::binary_stdio();
+        transport->initialize();
         auto logger=std::make_shared<Logger>();
         RtlKestrelDevice radio(RtlAdapter(transport,logger),logger,kestrel::ChipVariant::C8852C);
         if(!radio.BringUpMonitor({6,0,CHANNEL_WIDTH_20})) throw std::runtime_error("RTL8852CE firmware/monitor initialization failed");

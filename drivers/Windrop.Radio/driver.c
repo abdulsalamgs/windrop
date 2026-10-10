@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include <ntddk.h>
 #include <wdf.h>
 #include <initguid.h>
@@ -11,6 +12,8 @@ EVT_WDF_DEVICE_RELEASE_HARDWARE WindropReleaseHardware;
 EVT_WDF_DEVICE_D0_ENTRY WindropD0Entry;
 EVT_WDF_DEVICE_D0_EXIT WindropD0Exit;
 EVT_WDF_FILE_CLEANUP WindropFileCleanup;
+EVT_WDF_DEVICE_QUERY_REMOVE WindropQueryRemove;
+EVT_WDF_DEVICE_SURPRISE_REMOVAL WindropSurpriseRemoval;
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL WindropIoControl;
 
 _Use_decl_annotations_
@@ -41,6 +44,8 @@ NTSTATUS WindropDeviceAdd(WDFDRIVER Driver, PWDFDEVICE_INIT DeviceInit)
     power.EvtDeviceReleaseHardware = WindropReleaseHardware;
     power.EvtDeviceD0Entry = WindropD0Entry;
     power.EvtDeviceD0Exit = WindropD0Exit;
+    power.EvtDeviceQueryRemove = WindropQueryRemove;
+    power.EvtDeviceSurpriseRemoval = WindropSurpriseRemoval;
     WdfDeviceInitSetPnpPowerEventCallbacks(DeviceInit, &power);
     WDF_FILEOBJECT_CONFIG_INIT(&file, WDF_NO_EVENT_CALLBACK, WDF_NO_EVENT_CALLBACK, WindropFileCleanup);
     WdfDeviceInitSetFileObjectConfig(DeviceInit, &file, WDF_NO_OBJECT_ATTRIBUTES);
@@ -127,15 +132,18 @@ NTSTATUS WindropPrepareHardware(WDFDEVICE Device, WDFCMRESLIST Raw, WDFCMRESLIST
         context->Registers = MmMapIoSpace(translated->u.Memory.Start,
             translated->u.Memory.Length, MmNonCached);
         if (context->Registers == NULL) return STATUS_INSUFFICIENT_RESOURCES;
-        // Retain the bus interface for emergency bus-master fencing at teardown.
-        status = WdfFdoQueryForInterface(Device, &GUID_BUS_INTERFACE_STANDARD,
-            (PINTERFACE)&context->Bus, sizeof(context->Bus), 1, NULL);
-        if (!NT_SUCCESS(status)) {
-            MmUnmapIoSpace((PVOID)context->Registers, context->Info.Bar2Bytes);
-            context->Registers = NULL;
-            return status;
+        // PCI Command belongs to Windows. Only the OS's function-level reset
+        // interface may recover a hung DMA engine; never write PCI headers.
+        status = WdfFdoQueryForInterface(Device, &GUID_DEVICE_RESET_INTERFACE_STANDARD,
+            (PINTERFACE)&context->Reset, sizeof(context->Reset), DEVICE_RESET_INTERFACE_VERSION_1, NULL);
+        if (NT_SUCCESS(status) && context->Reset.DeviceReset != NULL &&
+            (context->Reset.SupportedResetTypes & (1u << FunctionLevelDeviceReset))) {
+            context->Info.Capabilities = WINDROP_CAP_REGISTERS | WINDROP_CAP_FRAME_DMA;
+        } else {
+            if (NT_SUCCESS(status) && context->Reset.InterfaceDereference != NULL)
+                context->Reset.InterfaceDereference(context->Reset.Context);
+            RtlZeroMemory(&context->Reset, sizeof(context->Reset));
         }
-        context->Info.Capabilities = WINDROP_CAP_REGISTERS | WINDROP_CAP_FRAME_DMA;
         return STATUS_SUCCESS;
     }
     return STATUS_DEVICE_CONFIGURATION_ERROR;
@@ -152,31 +160,55 @@ NTSTATUS WindropReleaseHardware(WDFDEVICE Device, WDFCMRESLIST Translated)
         MmUnmapIoSpace((PVOID)context->Registers, context->Info.Bar2Bytes);
         context->Registers = NULL;
     }
-    if (context->Bus.InterfaceDereference != NULL) {
-        context->Bus.InterfaceDereference(context->Bus.Context);
-        RtlZeroMemory(&context->Bus, sizeof(context->Bus));
+    if (context->Reset.InterfaceDereference != NULL) {
+        context->Reset.InterfaceDereference(context->Reset.Context);
+        RtlZeroMemory(&context->Reset, sizeof(context->Reset));
     }
     RtlZeroMemory(&context->Info, sizeof(context->Info));
     return STATUS_SUCCESS;
 }
 
-// The OS owns PCI resources and DMA mappings; only the final failure fence
-// changes PCI Command. Never free memory while an unresponsive device can DMA.
+static VOID ResetComplete(NTSTATUS Status, PVOID Context)
+{
+    DEVICE_CONTEXT* context = Context;
+    context->ResetStatus = Status;
+    KeSetEvent(&context->ResetEvent, IO_NO_INCREMENT, FALSE);
+}
+
+// Vendor fail-stop code: never let a hung device DMA into reclaimed memory.
+// Used only if an OS reset cannot establish safety, not for ordinary IO errors.
+#define WINDROP_DMA_UNSAFE_BUGCHECK 0xE0574401u
+static NTSTATUS ResetFunction(DEVICE_CONTEXT* context)
+{
+    NTSTATUS status;
+    LARGE_INTEGER timeout;
+    FUNCTION_LEVEL_DEVICE_RESET_PARAMETERS parameters;
+    if (context->Reset.DeviceReset == NULL) return STATUS_NOT_SUPPORTED;
+    KeInitializeEvent(&context->ResetEvent, NotificationEvent, FALSE);
+    context->ResetStatus = STATUS_PENDING;
+    RtlZeroMemory(&parameters, sizeof(parameters));
+    parameters.Size = sizeof(parameters);
+    parameters.DeviceResetCompletion = ResetComplete;
+    parameters.CompletionContext = context;
+    status = context->Reset.DeviceReset(context->Reset.Context, FunctionLevelDeviceReset, 0, &parameters);
+    if (status == STATUS_PENDING) {
+        timeout.QuadPart = -100000000LL; // 10 seconds; completion context stays device-owned
+        if (KeWaitForSingleObject(&context->ResetEvent, Executive, KernelMode, FALSE, &timeout) != STATUS_SUCCESS)
+            KeBugCheckEx(WINDROP_DMA_UNSAFE_BUGCHECK, 1, 0, 0, 0);
+        status = context->ResetStatus;
+    }
+    if (NT_SUCCESS(status)) { context->Rings = FALSE; context->DmaPublished = FALSE; }
+    return status;
+}
+
 static NTSTATUS FenceDma(DEVICE_CONTEXT* context)
 {
-    NTSTATUS status = RadioStop(context);
-    if (!NT_SUCCESS(status)) {
-        USHORT command = 0;
-        if (context->Bus.GetBusData(context->Bus.Context, PCI_WHICHSPACE_CONFIG,
-            &command, FIELD_OFFSET(PCI_COMMON_CONFIG, Command), sizeof(command)) != sizeof(command))
-            return STATUS_DEVICE_HARDWARE_ERROR;
-        command &= ~PCI_ENABLE_BUS_MASTER;
-        if (context->Bus.SetBusData(context->Bus.Context, PCI_WHICHSPACE_CONFIG,
-            &command, FIELD_OFFSET(PCI_COMMON_CONFIG, Command), sizeof(command)) != sizeof(command))
-            return STATUS_DEVICE_HARDWARE_ERROR;
-        context->Rings = FALSE;
-    }
-    return STATUS_SUCCESS;
+    NTSTATUS status;
+    if (!context->Touched || context->Removed) return STATUS_SUCCESS;
+    status = RadioStop(context);
+    if (!NT_SUCCESS(status)) status = ResetFunction(context);
+    if (NT_SUCCESS(status)) context->Touched = FALSE;
+    return status;
 }
 
 _Use_decl_annotations_
@@ -184,6 +216,7 @@ NTSTATUS WindropD0Entry(WDFDEVICE Device, WDF_POWER_DEVICE_STATE Previous)
 {
     UNREFERENCED_PARAMETER(Previous);
     DeviceContext(Device)->InD0 = TRUE;
+    DeviceContext(Device)->Removed = FALSE;
     return STATUS_SUCCESS;
 }
 
@@ -193,6 +226,8 @@ NTSTATUS WindropD0Exit(WDFDEVICE Device, WDF_POWER_DEVICE_STATE Target)
     NTSTATUS status;
     UNREFERENCED_PARAMETER(Target);
     status = FenceDma(DeviceContext(Device));
+    if (!NT_SUCCESS(status) && DeviceContext(Device)->DmaPublished)
+        KeBugCheckEx(WINDROP_DMA_UNSAFE_BUGCHECK, 2, (ULONG_PTR)status, 0, 0);
     DeviceContext(Device)->InD0 = FALSE;
     return status;
 }
@@ -202,8 +237,26 @@ VOID WindropFileCleanup(WDFFILEOBJECT File)
 {
     WDFDEVICE device = WdfFileObjectGetDevice(File);
     DEVICE_CONTEXT* context = DeviceContext(device);
-    if (context->InD0 && !NT_SUCCESS(FenceDma(context)))
+    if (context->InD0 && !NT_SUCCESS(FenceDma(context))) {
+        if (context->DmaPublished)
+            KeBugCheckEx(WINDROP_DMA_UNSAFE_BUGCHECK, 3, 0, 0, 0);
         WdfDeviceSetFailed(device, WdfDeviceFailedNoRestart);
+    }
+}
+
+_Use_decl_annotations_
+NTSTATUS WindropQueryRemove(WDFDEVICE Device)
+{
+    return NT_SUCCESS(FenceDma(DeviceContext(Device))) ? STATUS_SUCCESS : STATUS_DEVICE_HUNG;
+}
+
+_Use_decl_annotations_
+VOID WindropSurpriseRemoval(WDFDEVICE Device)
+{
+    // The bus reports the function absent; avoid any further MMIO access.
+    DeviceContext(Device)->Removed = TRUE;
+    DeviceContext(Device)->Rings = FALSE;
+    DeviceContext(Device)->DmaPublished = FALSE;
 }
 
 _Use_decl_annotations_
@@ -216,7 +269,7 @@ VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
     PVOID input = NULL;
     PVOID bytes = NULL;
     ULONG length = 0;
-    if (context->Info.Size == 0) {
+    if (context->Info.Size == 0 || context->Removed) {
         WdfRequestComplete(Request, STATUS_DEVICE_NOT_READY);
         return;
     }
@@ -231,7 +284,20 @@ VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
             (reg.Write && RadioProtectedRegister(reg.Offset, reg.Width))) { status = STATUS_INVALID_PARAMETER; goto complete; }
         status = WdfRequestRetrieveOutputBuffer(Request, sizeof(reg), &bytes, NULL);
         if (!NT_SUCCESS(status)) goto complete;
-        if (reg.Write) RadioWrite(context, reg.Offset, reg.Width, reg.Value);
+        if (reg.Write) {
+            if (!context->Touched) {
+                status = STATUS_DEVICE_NOT_READY;
+                goto complete;
+            }
+            // Aggregate index clears are HAL initialization/deinit operations.
+            // Permit them only with stopped, idle DMA, invalidating live rings.
+            if ((reg.Offset < 0x1018 && reg.Offset + reg.Width > 0x1014) ||
+                (reg.Offset < 0x11c8 && reg.Offset + reg.Width > 0x11c4) ||
+                (reg.Offset < 0x1204 && reg.Offset + reg.Width > 0x1200)) {
+                if (!NT_SUCCESS(RadioStop(context))) { status = STATUS_DEVICE_BUSY; goto complete; }
+            }
+            RadioWrite(context, reg.Offset, reg.Width, reg.Value);
+        }
         else reg.Value = RadioRead(context, reg.Offset, reg.Width);
         RtlCopyMemory(bytes, &reg, sizeof(reg)); length = sizeof(reg);
         goto complete;
@@ -249,9 +315,17 @@ VOID WindropIoControl(WDFQUEUE Queue, WDFREQUEST Request, size_t OutputLength,
         goto complete;
     }
     if (InputLength != 0) { status = STATUS_INVALID_PARAMETER; goto complete; }
+    if (Code == WINDROP_IOCTL_INITIALIZE) {
+        if (OutputLength != 0) { status = STATUS_INVALID_BUFFER_SIZE; goto complete; }
+        if (context->Touched) { status = STATUS_DEVICE_BUSY; goto complete; }
+        status = ResetFunction(context);
+        if (NT_SUCCESS(status)) context->Touched = TRUE;
+        goto complete;
+    }
     if (Code == WINDROP_IOCTL_SETUP || Code == WINDROP_IOCTL_STOP) {
         if (OutputLength != 0) { status = STATUS_INVALID_BUFFER_SIZE; goto complete; }
-        status = Code == WINDROP_IOCTL_SETUP ? RadioSetup(context) : RadioStop(context);
+        status = Code == WINDROP_IOCTL_SETUP ?
+            (context->Touched ? RadioSetup(context) : STATUS_DEVICE_NOT_READY) : FenceDma(context);
         goto complete;
     }
     if (Code == WINDROP_IOCTL_RECEIVE) {

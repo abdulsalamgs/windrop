@@ -51,6 +51,9 @@ class Tunnel {
 public:
     explicit Tunnel(const std::array<uint8_t,6>& mac) {
         try {
+            NET_LUID existing{};
+            if(ConvertInterfaceAliasToLuid(L"awdl0",&existing)==NO_ERROR)
+                throw std::runtime_error("awdl0 already exists; stop its owner before starting Windrop");
             auto dll=executable_directory()/L"wintun.dll";
             library_=LoadLibraryExW(dll.c_str(),nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);
             if(!library_) throw std::runtime_error("Cannot load packaged Wintun DLL");
@@ -62,6 +65,9 @@ public:
             adapter_=create_(L"awdl0",L"Windrop",nullptr);
             if(!adapter_) throw std::runtime_error("Cannot create awdl0 adapter: "+std::to_string(GetLastError()));
             luid_(adapter_,&interface_);
+            std::array<wchar_t,IF_MAX_STRING_SIZE+1> alias{};
+            check(ConvertInterfaceLuidToAlias(&interface_,alias.data(),alias.size()),"Read AWDL adapter name");
+            if(std::wstring(alias.data())!=L"awdl0") throw std::runtime_error("awdl0 name was taken during startup");
             session_=start_(adapter_,0x400000);
             if(!session_) throw std::runtime_error("Cannot start Wintun session");
             MIB_IPINTERFACE_ROW properties{}; InitializeIpInterfaceEntry(&properties);

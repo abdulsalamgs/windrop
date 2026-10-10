@@ -10,7 +10,7 @@ public static class RadioCommand
     {
         if (args.Contains("--help"))
         {
-            Console.WriteLine("windrop-radio --interface awdl0 [--listen 0.0.0.0]\nRequires WINDROP_RADIO_KEY (32+ characters). OWL must be running first.");
+            Console.WriteLine("windrop-radio --interface awdl0 [--listen 0.0.0.0]\nRequires WINDROP_RADIO_KEY (32+ characters). Start the native AWDL worker or Linux OWL first.");
             return 0;
         }
         try
@@ -19,7 +19,7 @@ public static class RadioCommand
             string key = Environment.GetEnvironmentVariable("WINDROP_RADIO_KEY")
                 ?? throw new ArgumentException("Set WINDROP_RADIO_KEY to a random 32-byte hex key shared with the Windows app.");
             var device = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name == name)
-                ?? throw new ArgumentException($"No {name} interface. Start OWL on a compatible dedicated USB Wi-Fi adapter first.");
+                ?? throw new ArgumentException($"No {name} interface. Start the native AWDL worker on Windows or OWL on a compatible Linux radio first.");
             var address = device.GetIPProperties().UnicastAddresses.Select(a => a.Address).FirstOrDefault(a => a.IsIPv6LinkLocal)
                 ?? throw new ArgumentException($"{name} has no IPv6 link-local address. Wait for OWL to bring the radio up.");
             address.ScopeId = device.GetIPProperties().GetIPv6Properties().Index;

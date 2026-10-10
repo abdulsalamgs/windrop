@@ -7,6 +7,9 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
       - name: Install Visual Studio driver integration and Spectre libraries
         shell: pwsh
         run: |
@@ -17,13 +20,13 @@ jobs:
           $setupArgs = @('modify', '--installPath', ('"' + $vsPath + '"'), '--add', 'Microsoft.Windows.DriverKit', '--add', 'Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre', '--quiet', '--norestart')
           $setup = Start-Process -FilePath $setupPath -ArgumentList $setupArgs -WindowStyle Hidden -Wait -PassThru
           if ($setup.ExitCode -notin @(0, 3010)) { throw "VS setup failed: $($setup.ExitCode)" }
-      - name: Compile and validate unsigned development driver
+      - name: Compile driver and native AWDL workers, verify replay, package sources
         shell: pwsh
-        run: ./scripts/build-driver.ps1
+        run: ./scripts/build-native.ps1 -Publish
       - uses: actions/upload-artifact@v4
         with:
-          name: Windrop-RTL8852CE-unsigned-development-driver
-          path: build/driver/WindropRadio
+          name: Windrop-native-development-x64
+          path: publish/Windrop-native-development-x64.zip
   protocol:
     strategy:
       matrix:

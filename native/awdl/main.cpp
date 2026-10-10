@@ -57,8 +57,6 @@ static int run() {
         if(now>=next_clean) { engine.clean(now); next_clean=now+engine.state.peers.clean_interval; }
         unsigned slot=awdl_sync_current_eaw(now,&engine.state.sync)%AWDL_CHANSEQ_LENGTH;
         uint32_t desired=awdl_chan_num(engine.state.channel.sequence[slot],engine.state.channel.enc);
-        if(desired && desired!=6 && desired!=36 && desired!=44 && desired!=149)
-            throw std::runtime_error("Peer requires an unsupported AWDL channel; this port supports 6/36/44/149");
         if(desired && desired!=actual_channel && !pending_channel) {
             std::vector<uint8_t> bytes(4); memcpy(bytes.data(),&desired,4);
             if(radio.send(windrop::Message::Channel,std::move(bytes))) { pending_channel=desired; pending_since=now; }
@@ -129,7 +127,10 @@ static int replay(const char* input_name,const char* output_name,const std::arra
     std::ofstream output(output_name,std::ios::binary|std::ios::trunc);
     if(!output || !output.write(reinterpret_cast<const char*>(packets.data()),static_cast<std::streamsize>(packets.size())))
         throw std::runtime_error("Cannot write replay output");
-    printf("frames=%u ipv6_packets=%u bytes=%zu\n",frames,delivered,packets.size()); return 0;
+    engine.clean(clock_time_us());
+    printf("frames=%u ipv6_packets=%u bytes=%zu channels=",frames,delivered,packets.size());
+    for(unsigned i=0;i<AWDL_CHANSEQ_LENGTH;i++) printf("%s%u",i?",":"",awdl_chan_num(engine.state.channel.sequence[i],engine.state.channel.enc));
+    puts(""); return 0;
 }
 int main(int argc,char** argv) {
     try {

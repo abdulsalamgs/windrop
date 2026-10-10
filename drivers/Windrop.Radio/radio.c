@@ -41,10 +41,15 @@ static VOID Arm(DEVICE_CONTEXT* c, ULONG bd, ULONG buffer, ULONG i)
 BOOLEAN RadioProtectedRegister(ULONG offset, ULONG width)
 {
     ULONG i;
-    // Ring base addresses belong to the driver; accepting one from user space
-    // would let the NIC DMA into unrelated memory. Protect both low/high words.
-    for(i=0;i<13;i++) if(offset < (ULONG)Tx[i].Base+8 && offset+width > Tx[i].Base) return TRUE;
-    return (offset<0x1228 && offset+width>0x1220) || (offset<0x1230 && offset+width>0x1228);
+    // Every descriptor boundary and ownership pointer belongs to the driver.
+    // Changing count/BDRAM/index can escape a slice even with a fixed base.
+    for(i=0;i<13;i++) {
+        if(offset < (ULONG)Tx[i].Base+8 && offset+width > Tx[i].Base) return TRUE;
+        if(offset < (ULONG)Tx[i].Num+2 && offset+width > Tx[i].Num) return TRUE;
+        if(offset < (ULONG)Tx[i].Bdram+4 && offset+width > Tx[i].Bdram) return TRUE;
+        if(offset < (ULONG)Tx[i].Index+4 && offset+width > Tx[i].Index) return TRUE;
+    }
+    return (offset<0x1230 && offset+width>0x1210);
 }
 
 NTSTATUS RadioStop(DEVICE_CONTEXT* c)
@@ -52,7 +57,8 @@ NTSTATUS RadioStop(DEVICE_CONTEXT* c)
     ULONG i, v;
     if(c->Registers == NULL) return STATUS_SUCCESS;
     v=RadioRead(c,0x1000,4);
-    if(v!=MAXULONG) {
+    if(v==MAXULONG) return STATUS_DEVICE_HARDWARE_ERROR;
+    {
         RadioWrite(c,0x1000,4,(v|(1u<<17))&~((1u<<7)|(1u<<15)));
         RadioWrite(c,0x10b0,4,0); RadioWrite(c,0x30b0,4,0);
         for(i=0;i<1000;i++) {
@@ -88,7 +94,7 @@ NTSTATUS RadioSetup(DEVICE_CONTEXT* c)
     RadioWrite(c,0x1220,4,c->DmaBase+RADIO_RXQ_BD); RadioWrite(c,0x1224,4,0);
     RadioWrite(c,0x1228,4,c->DmaBase+RADIO_RPQ_BD); RadioWrite(c,0x122c,4,0);
     RadioWrite(c,0x1218,2,0); RadioWrite(c,0x121c,2,0);
-    KeMemoryBarrier(); c->Rings=TRUE;
+    KeMemoryBarrier(); c->Rings=TRUE; c->DmaPublished=TRUE;
     return STATUS_SUCCESS;
 }
 

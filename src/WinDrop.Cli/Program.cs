@@ -58,11 +58,11 @@ static int PrintUsage()
           windrop browse                   list nearby peers
           windrop doctor [--json] [--native] check bridge or Windows driver readiness
 
-        Set WINDROP_RADIO_KEY and start windrop-radio on a Linux/WSL2 OWL radio.
+        Set WINDROP_RADIO_KEY and start windrop-radio on a native Windows or Linux OWL radio.
         WINDROP_RADIO_HOST defaults to 127.0.0.1; --bridge <host> overrides it.
 
         The Linux/WSL2 radio needs a compatible adapter. The native Windows driver
-        is under development; --native checks it without contacting the Linux bridge.
+        is experimental; --native checks it without contacting a bridge.
         --lan is an explicit development mode for ordinary-network protocol testing.
         See docs/RADIO-SETUP.md. --yes explicitly disables incoming consent prompts.
         """);
@@ -423,7 +423,7 @@ static async Task<int> SendAsync(string[] args, CancellationToken ct)
 
 
 /// <summary>
-/// Uses the authenticated Linux AWDL bridge by default. Ordinary LAN transport is
+/// Uses the authenticated native Windows or Linux AWDL bridge by default. Ordinary LAN transport is
 /// selected only by --lan. The native Windows driver currently supplies diagnostics
 /// only and is not yet a transfer transport.
 /// </summary>

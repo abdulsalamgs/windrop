@@ -52,3 +52,22 @@ $badOutput = Join-Path $fixtures 'bad-awdl-header.bin'
 & $exe replay $badInput $badOutput --peer aabbccddeeff
 if ($LASTEXITCODE -ne 0 -or (Get-Item $badOutput).Length -ne 0) { throw 'An invalid AWDL data prefix was incorrectly delivered' }
 Write-Host 'PASS: invalid AWDL data prefixes are dropped.'
+
+# OWL test_awdl_channel.cpp records this independent iPhone idle sequence.
+# A hand-built MIF elects that peer and carries the captured channel values.
+$action = Bytes '00000a002200000000d8 d0000000 ffffffffffff aabbccddeeff 002500ff9473 0000 7f0017f208100300 0000000000000000 1502001001 051500 00000000 00 aabbccddeeff 64000000 64000000 0000 122600 0f030003ffff 8480 0000 9580 0000 0000 0000 0000 0000 0651 0000 9580 0000 0000 0000 0000 0000'
+$phoneInput = Join-Path $fixtures 'iphone-channels.pcap'
+$phoneOutput = Join-Path $fixtures 'iphone-channels.bin'
+$writer = New-Object IO.BinaryWriter([IO.File]::Create($phoneInput))
+try {
+    $writer.Write((Bytes 'd4c3b2a1 0200 0400 00000000 00000000 ffff0000 7f000000'))
+    $writer.Write([uint32]1); $writer.Write([uint32]0)
+    $writer.Write([uint32]$action.Length); $writer.Write([uint32]$action.Length)
+    $writer.Write([byte[]]$action)
+} finally { $writer.Dispose() }
+$result = & $exe replay $phoneInput $phoneOutput --peer aabbccddeeff
+$result | Write-Host
+if ($LASTEXITCODE -ne 0 -or $result -notmatch 'channels=0,0,149,0,0,0,0,0,6,0,149,0,0,0,0,0$') {
+    throw 'An iPhone infrastructure-channel window did not preserve usable AWDL social windows'
+}
+Write-Host 'PASS: captured iPhone channel sequence preserves social windows and skips unsupported infrastructure channels.'

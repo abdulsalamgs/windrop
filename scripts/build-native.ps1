@@ -63,6 +63,7 @@ function Patch([string]$path, [string]$name) {
 }
 $devourer = Source 'devourer' 'https://github.com/OpenIPC/devourer.git' 'f369aac553c9ce884901115ef9e66509f93c5683'
 $owl = Source 'owl' 'https://github.com/jedbillyb/owl.git' '832d70f815c3d4a06a02117bf0fc5e868daa1ff0'
+$usbSource = Source 'libusb' 'https://github.com/libusb/libusb.git' '15a7ebb4d426c5ce196684347d2b7cafad862626'
 $ErrorActionPreference = 'Continue'
 git -C $owl -c core.autocrlf=false submodule update --init --depth 1 radiotap
 $ErrorActionPreference = 'Stop'
@@ -94,24 +95,34 @@ if ($Publish) {
     $package = Join-Path $repo 'publish/native'
     New-Item -ItemType Directory -Force $package | Out-Null
     Copy-Item (Join-Path $release 'windrop-*.exe'), (Join-Path $release '*.dll') -Destination $package
-    Copy-Item (Join-Path $repo 'build/driver/WindropRadio') -Destination (Join-Path $package 'driver') -Recurse -Force
+    $driverPackage = Join-Path $package 'driver'
+    New-Item -ItemType Directory -Force $driverPackage | Out-Null
+    Copy-Item (Join-Path $repo 'build/driver/WindropRadio/*') -Destination $driverPackage -Recurse -Force
     & $dotnet publish (Join-Path $repo 'src/Windrop.Radio') -c Release -r win-x64 --self-contained true -o (Join-Path $package 'radio') --nologo
     if ($LASTEXITCODE -ne 0) { throw 'Windows radio bridge publish failed' }
     $licenses = Join-Path $package 'licenses'
     New-Item -ItemType Directory -Force $licenses | Out-Null
     Copy-Item (Join-Path $repo 'native/licenses/*') -Destination $licenses
     Copy-Item (Join-Path $wintun 'LICENSE.txt') -Destination (Join-Path $licenses 'Wintun-binaries.txt')
+    Copy-Item (Join-Path $usbSource 'COPYING') -Destination (Join-Path $licenses 'libusb-LGPL-2.1.txt')
     Copy-Item (Join-Path $repo 'LICENSE') -Destination (Join-Path $licenses 'Windrop-MIT.txt')
     # Supply pristine pinned upstream source archives plus the exact port patches.
     $sources = Join-Path $package 'sources'
     New-Item -ItemType Directory -Force $sources | Out-Null
-    foreach ($entry in @(@($devourer, 'devourer'), @($owl, 'owl'), @((Join-Path $owl 'radiotap'), 'radiotap'))) {
-        git -C $entry[0] archive --format=zip --output=(Join-Path $sources ($entry[1] + '.zip')) HEAD
+    foreach ($entry in @(@($devourer, 'devourer'), @($owl, 'owl'), @((Join-Path $owl 'radiotap'), 'radiotap'), @($usbSource, 'libusb'))) {
+        $archivePath = Join-Path $sources ($entry[1] + '.zip')
+        git -C $entry[0] archive --format=zip "--output=$archivePath" HEAD
         if ($LASTEXITCODE -ne 0) { throw 'Corresponding source archive failed' }
     }
-    Copy-Item (Join-Path $repo 'native') -Destination (Join-Path $sources 'windrop/native') -Recurse -Force
-    Copy-Item (Join-Path $repo 'drivers') -Destination (Join-Path $sources 'windrop/drivers') -Recurse -Force
-    Copy-Item (Join-Path $repo 'scripts') -Destination (Join-Path $sources 'windrop/scripts') -Recurse -Force
+    # Include exact working-tree contents of all tracked Windrop sources,
+    # including the self-contained .NET bridge, rather than only C++ sources.
+    foreach ($relative in (git -C $repo ls-files)) {
+        $sourceFile = Join-Path $repo $relative
+        if (-not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) { continue }
+        $targetFile = Join-Path $sources "windrop/$relative"
+        New-Item -ItemType Directory -Force (Split-Path -Parent $targetFile) | Out-Null
+        Copy-Item -LiteralPath $sourceFile -Destination $targetFile -Force
+    }
     Copy-Item (Join-Path $repo 'THIRD-PARTY-NOTICES.md') -Destination $package
     Copy-Item (Join-Path $repo 'native/README.md') -Destination $package
     Compress-Archive -Path (Join-Path $package '*') -DestinationPath (Join-Path $repo 'publish/Windrop-native-development-x64.zip') -Force

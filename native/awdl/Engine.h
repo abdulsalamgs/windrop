@@ -87,6 +87,13 @@ public:
             awdl_peer_get(state.peers.peers,&state.election.sync_addr,&master)==PEERS_OK && master->has_sequence) {
             memcpy(state.channel.sequence,master->sequence,sizeof(state.channel.sequence));
             state.channel.enc=master->sequence_enc; state.channel.sequence_from_peer=1;
+            // iPhones also advertise infrastructure windows (e.g. channel 132).
+            // Preserve social windows and advertise other windows as absent.
+            // The peer's original sequence stays intact for unicast guards.
+            for(auto& channel:state.channel.sequence) {
+                unsigned number=awdl_chan_num(channel,state.channel.enc);
+                if(number!=6 && number!=36 && number!=44 && number!=149) channel={};
+            }
         } else if(state.channel.sequence_from_peer) {
             awdl_chanseq_init_static(state.channel.sequence,&state.channel.master);
             state.channel.enc=AWDL_CHAN_ENC_OPCLASS; state.channel.sequence_from_peer=0;

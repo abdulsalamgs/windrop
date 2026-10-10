@@ -20,6 +20,16 @@ class WindowsTransport final : public devourer::ITransport {
         if(read) *read=returned;
     }
     uint32_t reg(uint32_t offset, uint32_t width, bool write, uint32_t value=0) {
+        // The HAL uses a dword at SYS_FUNC_EN (0x0002). Match the upstream
+        // PCIe transport's byte split instead of issuing unaligned MMIO.
+        if(offset & (width-1)) {
+            uint32_t result=0;
+            for(uint32_t i=0;i<width;i++) {
+                uint32_t byte=reg(offset+i,1,write,(value>>(i*8))&255);
+                result|=(byte&255)<<(i*8);
+            }
+            return write?value:result;
+        }
         WINDROP_REGISTER operation={offset,width,write?1u:0u,value}; DWORD n;
         call(WINDROP_IOCTL_REGISTER,&operation,sizeof(operation),&operation,sizeof(operation),&n);
         if(n!=sizeof(operation)) throw std::runtime_error("Invalid register reply");
@@ -67,6 +77,7 @@ public:
         for(size_t i=0;i<n;i++) write8(static_cast<uint16_t>(r+i),p[i]); return true;
     }
     void hci_setup() override { call(WINDROP_IOCTL_SETUP); }
+    void initialize() { call(WINDROP_IOCTL_INITIALIZE); }
     void stop() { call(WINDROP_IOCTL_STOP); }
     int tx_sync(uint8_t channel,uint8_t* p,size_t n,int) override {
         if(n>WINDROP_TX_MAX) throw std::runtime_error("TX buffer too large");

@@ -2,7 +2,7 @@
 
 Direct Apple AirDrop from a Windows desktop, with a native interface for nearby devices, file selection, sending, and approval of incoming transfers. No browser or iPhone app is involved.
 
-**Hardware is required.** Windows runs the AirDrop protocol; a dedicated USB Wi-Fi adapter in WSL2, or a Linux radio host, supplies the AWDL link through OWL. A built-in Windows Wi-Fi card is not sufficient by itself. This project has passed software integration tests; **this Windrop build has not yet been tested against a real iPhone or an AWDL radio**.
+**Hardware qualification is still required.** Windows runs the AirDrop protocol. An experimental native RTL8852CE backend now implements frame TX/RX and OWL AWDL integration on Windows. Its development driver is unsigned and has not been loaded or tested on hardware. The existing Linux/WSL2 OWL bridge remains available. **This Windrop build has not completed a real iPhone transfer.**
 
 The protocol implementation is adapted from MIT-licensed [UvejsGj/WinDrop](https://github.com/UvejsGj/WinDrop). See [third-party notices](THIRD-PARTY-NOTICES.md) for the pinned source and the separate OWL license.
 
@@ -21,7 +21,7 @@ The desktop package is `publish/Windrop-windows-x64.zip`. It includes .NET and r
 
 Read [radio setup and hardware selection](docs/RADIO-SETUP.md) before expecting a phone to appear. With the radio connected, turn on Wi-Fi and Bluetooth on the iPhone and choose AirDrop's **Everyone for 10 Minutes**. Select Windrop from the native Share → AirDrop menu and approve the transfer on Windows.
 
-A [native RTL8852CE Windows driver](docs/WINDOWS-DRIVER.md) is under development. Its first increment builds and provides a read-only identity query; raw frames and AWDL are not implemented, and it has not been installed or hardware-tested. `windrop doctor --native --json` checks this path without a Linux bridge key and reports it as unavailable for AirDrop.
+For the built-in RTL8852CE path, read the [native build and run instructions](native/README.md) and [driver signing and qualification limits](docs/WINDOWS-DRIVER.md). `./scripts/build-native.ps1 -Publish` builds the unsigned development package. After a signed driver is installed and qualified, `./scripts/start-native.ps1` starts AWDL, the authenticated local bridge and the desktop. `windrop doctor --native --json` checks driver availability without bridge credentials; a driver query alone never claims AirDrop readiness.
 
 ## CLI
 

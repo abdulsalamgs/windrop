@@ -1,39 +1,34 @@
-# Native Windows radio development
+﻿# Native Windows radio development
 
-The first Windows PCIe driver increment builds for the Realtek RTL8852CE (`10ec:c852`). It is **not an AirDrop radio yet**. Its only operation is a read-only identity/capability query. The desktop and transfer CLI still use the authenticated Linux OWL bridge. There is no automatic selection of this unfinished driver.
+The experimental native backend targets the Realtek RTL8852CE (`10ec:c852`). It now implements register control, kernel-owned AX DMA rings, frame reception/injection, the Devourer 8852C HAL, OWL AWDL and Wintun IPv6. It has compiled and passed offline software checks, but **has never been loaded or qualified on hardware**. The unsigned development package cannot currently replace the signed Realtek driver on the Secure Boot development PC.
 
-## What is implemented
+## Driver boundary and lifetime
 
-`drivers/Windrop.Radio` is a KMDF function driver with a PnP INF for this chip, a SYSTEM/administrator-only device interface, exclusive access, and a 24-byte buffered query. During hardware preparation it reads PCI configuration through the bus interface, validates the vendor/device identity, and locates the chip's BAR2 register resource. It releases its bus-interface reference immediately and clears its cached identity during hardware release.
+`drivers/Windrop.Radio` is a KMDF replacement function driver, not a filter sharing the Realtek network driver. Its INF restricts its exclusive device interface to SYSTEM and administrators. Binding it removes ordinary Wi-Fi networking on that card while it owns the function. No concurrent Wi-Fi Internet/AWDL support is claimed.
 
-The driver does not expose physical addresses, arbitrary memory access, or register writes to applications. It does not map BAR2, change bus mastering, allocate DMA buffers, initialize firmware, or receive/transmit frames. Its capability field is zero. Successful installation would establish device ownership and identity only, not AWDL readiness. This code has not been loaded on hardware.
+ABI v2 exposes a 24-byte identity/capability query, explicit initialization, bounded aligned BAR2 operations, ring setup, buffered TX/RX and stop. TX accepts at most 4152 descriptor/payload bytes; RX assembles at most 32768 bytes. Register requests cannot supply DMA addresses or overwrite ring bases, sizes, indices or BDRAM ownership. The unaligned HAL register accesses are split into aligned byte operations. Firmware/chip initialization runs in the separately licensed hardware worker.
 
-`windrop doctor --native --json` enumerates the driver's device interface, queries it if available, and explains what is missing without contacting the Linux bridge or requiring its key. Missing/failed drivers, unsupported operating systems and the current identity-only driver all return `ready: false` and exit code 3. Selecting both `--native` and `--bridge` is an error.
+KMDF owns a 32-bit DMA common buffer for all descriptor rings and payload storage. The driver programs only logical addresses from that allocation, reuses TX pages only after release reports, and retains the allocation through power transitions. Power-managed sequential IOCTLs and device synchronization serialize hardware operations. Read-only diagnostics do not initialize or stop the chip on handle close.
+
+Before accepting mutable operations the driver requires the OS's supported **function-level reset** interface. Missing reset support leaves capabilities unavailable. Initialization resets only this PCI function before the HAL reads/writes chip registers. Teardown stops DMA and verifies idle; a failed stop requests an OS function-level reset and waits for completion. PCI configuration headers belong to Windows and are never written by Windrop. Platform-level resets are not requested. [PCI configuration ownership](https://learn.microsoft.com/en-us/windows-hardware/drivers/pci/accessing-pci-device-configuration-space), [device reset interface](https://learn.microsoft.com/en-us/windows-hardware/drivers/kernel/working-with-guid-device-reset-interface-standard).
+
+A query-remove that cannot establish quiescence returns `STATUS_DEVICE_HUNG`. An OS surprise-removal report ends further MMIO access. If teardown cannot stop or reset a device with published DMA addresses, or an asynchronous reset fails to complete within ten seconds, the driver deliberately fail-stops Windows with vendor bugcheck `0xE0574401` instead of freeing memory that hardware may still write. This exceptional failure path requires fault-injection qualification before installation or release; the port is not a production driver.
+
+`windrop doctor --native --json` checks the device interface without bridge credentials. Missing, failed, busy or unsupported drivers return `ready: false` and exit 3. A loaded driver alone also remains unavailable for AirDrop: use regular `doctor` against the authenticated bridge after the AWDL worker is running. Selecting both `--native` and `--bridge` is an error.
 
 ## Build without installing
 
-Use Visual Studio 2022 C++ tools, x64 Spectre libraries, and its Windows Driver Kit integration. The Build Tools integration component is `Component.Microsoft.Windows.DriverKit.BuildTools`; full Visual Studio uses `Microsoft.Windows.DriverKit`. The build restores Microsoft's pinned WDK `10.0.26100.6584`, whose dependencies are SDK CPP/x64 `10.0.26100.1`. These are the supported VS2022 kit versions. [Microsoft's kit compatibility table](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads), [Microsoft's integration-component detection](https://github.com/microsoft/Windows-driver-samples/blob/main/BuildEnvironment.ps1).
-
-For a fresh Build Tools installation:
+Use Visual Studio 2022 C++ tools, x64 Spectre libraries and WDK integration. Build Tools uses `Component.Microsoft.Windows.DriverKit.BuildTools`; full Visual Studio uses `Microsoft.Windows.DriverKit`. The build restores WDK `10.0.26100.6584` and SDK CPP/x64 `10.0.26100.1`, the VS2022-compatible kit versions. [Kit compatibility](https://learn.microsoft.com/en-us/windows-hardware/drivers/other-wdk-downloads), [Microsoft's integration detection](https://github.com/microsoft/Windows-driver-samples/blob/main/BuildEnvironment.ps1).
 
 ```powershell
-winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --silent --accept-package-agreements --accept-source-agreements --override '--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre --add Component.Microsoft.Windows.DriverKit.BuildTools'
 ./scripts/build-driver.ps1
+./scripts/build-native.ps1 -Publish
 ```
 
-If Build Tools is already installed, add the driver and Spectre components through its installer before building. `build-driver.ps1` selects 64-bit MSBuild, restores WDK packages through the Microsoft-signed NuGet executable, runs compilation with warnings as errors and code analysis, and generates the unsigned catalog. Output is under `build/driver`, including the package in `build/driver/WindropRadio`.
+The driver script selects 64-bit MSBuild, verifies the Microsoft-signed NuGet executable, compiles with warnings as errors, Spectre mitigation and code analysis, validates the INF and generates the unsigned catalog. Output: `build/driver/WindropRadio`. The native build uses pinned, patched upstream sources and runs public PCAP replay checks. See [native build/run instructions](../native/README.md).
 
-The script does not install the kernel driver, replace the Realtek network driver, generate/trust a certificate, change boot policy, or reboot. A generated unsigned catalog passing signability checks is not a Microsoft signature.
+Neither script installs a driver, trusts a signing certificate, changes boot policy or reboots. Passing catalog signability checks is not Microsoft signing. Secure Boot remains enabled on the development PC. Loading requires Windows-compliant signing; production distribution needs Microsoft signing. [Kernel signing policy](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-).
 
-## Remaining native AirDrop work
+## Qualification gate
 
-1. Implement bounded kernel register operations and Windows-managed DMA for the RTL8852CE's AX rings; preserve device/power/removal lifetime and stop DMA before freeing memory. Devourer's pinned Linux PCIe transport and AX HAL are the implementation reference, not a Windows binary. [Source investigation](BUILTIN-WIFI-RESEARCH.md).
-2. Connect chip initialization, firmware, channel changes, frame RX/TX and radio recovery to the AWDL engine. OWL's Linux `nl80211`, pcap injection and TUN integration need Windows counterparts.
-3. Provide the AWDL IPv6 interface and connect Windrop's transfer transport to it. A virtual IP interface alone cannot control the physical radio.
-4. Qualify discovery, consent, byte-exact transfers in both directions, repeated start/stop, power transitions and restoration of the original network driver with real hardware and an iPhone.
-
-## Loading and signing
-
-Secure Boot is enabled on the development PC. No signing or firmware settings were changed. A kernel driver must satisfy Windows' signing policy before it can be loaded. Production distribution needs Microsoft signing; development test signing requires an appropriate test configuration and may require boot/firmware changes and a reboot. Those are separate from compiling source. [Microsoft kernel signing policy](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/kernel-mode-code-signing-policy--windows-vista-and-later-), [test-signing configuration](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/the-testsigning-boot-configuration-option).
-
-This is a replacement function driver, not a filter sharing the card with Realtek's network driver. Binding it would remove ordinary Wi-Fi networking on that card while it owns the device. Hardware testing needs a verified rollback path and another network connection. No concurrent Wi-Fi Internet/AWDL support is claimed.
+The source implementation is present; the remaining gate is loaded hardware validation, not another identity-only scaffold. Validate OS function-reset support, firmware startup, physical RX/TX, release-report parsing, regulatory/channel behavior, retune latency and AWDL timing first. Then validate actual iPhone discovery, consent and byte-exact transfers in both directions. Finally test repeated sessions, process crashes, sleep/resume, removal, reset failure and restoration of the original driver under Driver Verifier, with another network connection and a rollback path. No installation is authorized merely by building this package.
